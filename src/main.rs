@@ -32,7 +32,7 @@ fn main() {
     draw(&mut term.lock().unwrap());
 
     let stdin = io::stdin();
-    let (tx, rx) = chan::sync(0);
+    let (tx, rx) = chan::async();
 
     let term = Arc::clone(&terminal);
     thread::spawn(move || {
