@@ -74,7 +74,9 @@ fn main() {
     thread::spawn(move || {
         provider.outgoing_loop();
     });
-    provider_chan.0.send(Msg::ToDiscord(MsgToDiscord::Echo(String::from("Test!"))));
+    for i in 1..5 {
+        provider_chan.0.send(Msg::ToDiscord(MsgToDiscord::Echo(String::from("Test!"))));
+    }
     let example_message = MockMessage {
         username: String::from("Namtsua"),
         content: String::from("I love fidget spinners"),
@@ -136,26 +138,26 @@ fn main() {
         }
     });
 
-    let dp_rx = provider_chan.1;
     let state = Arc::clone(&app_state);
     loop {
 // app_state.messages.push(MockMessage{
 //                      username:String::from("test"), content: String::from("hey")
 //                 });
+    let dp_rx = provider_chan.1.clone();
         chan_select! {
-            default => {},
+            default => {
+                thread::sleep_ms(10);
+            },
             rx.recv() => {
                 break;
             },
             dp_rx.recv() -> val => {
                 let mut app_state = state.lock().unwrap();
-                println!("Adding message to list");
-                break;
                 app_state.messages.push(MockMessage{
                      username:String::from("DiscordProvider"), content: String::from(format!("-> {:?}", val))
                 });
             },
-        }
+        };
     }
     let term = Arc::clone(&terminal);
     let mut t = term.lock().unwrap();

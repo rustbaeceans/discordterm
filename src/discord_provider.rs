@@ -1,6 +1,7 @@
 use discord::Discord;
 use discord::model::{Message};
 use chan::{Sender,Receiver};
+use thread;
 
 //#[derive(Debug)]
 pub struct DiscordProvider {
@@ -46,9 +47,11 @@ impl DiscordProvider {
                     MsgToDiscord::Echo(s) => {
                         println!("Sending response");
                         self.tx.send(Msg::FromDiscord(MsgFromDiscord::EchoResponse(s)));
+                        println!("Sent response");
                     }
                 } 
            }
+           thread::sleep_ms(500); // AAAAAAAAAAAAAAAAAAAUGH
         }
     }
 }
