@@ -9,6 +9,8 @@ use std::sync::{Arc, Mutex};
 
 use std::io;
 use std::vec::Vec;
+use std::fs::File;
+use std::io::Read;
 
 use discord::model::Message;
 
@@ -21,6 +23,9 @@ use tui::backend::RawBackend;
 use tui::widgets::{Widget, Block, Borders, Item, List, Paragraph};
 use tui::layout::{Group, Size, Direction};
 use tui::style::{Color, Style};
+
+mod discord_provider;
+use discord_provider::{DiscordProvider, Msg, MsgToDiscord};
 
 struct MockMessage {
     username: String,
@@ -49,10 +54,27 @@ impl AppState {
     }
 }
 
+fn read_token() -> String {
+  let mut data = String::new();
+    let mut f = match File::open("./token") {
+        Ok(x) => x,
+        Err(x) => {println!("Couldn't log in."); return String::from("0");}
+    };
+    
+    f.read_to_string(&mut data).expect("Unable to read string");
+    data
+}
+
 fn main() {
 
     let backend = RawBackend::new().unwrap();
 
+    let provider_chan = chan::async();
+    let provider = DiscordProvider::init(read_token(), provider_chan.clone());
+    thread::spawn(move || {
+        provider.outgoing_loop();
+    });
+    provider_chan.0.send(Msg::ToDiscord(MsgToDiscord::Echo(String::from("Test!"))));
     let example_message = MockMessage {
         username: String::from("Namtsua"),
         content: String::from("I love fidget spinners"),
@@ -113,12 +135,23 @@ fn main() {
         }
     });
 
+    let dp_rx = provider_chan.1;
+    let state = Arc::clone(&app_state);
     loop {
+        let mut app_state = state.lock().unwrap();
+app_state.messages.push(MockMessage{
+                     username:String::from("test"), content: String::from("hey")
+                });
         chan_select! {
             default => {},
             rx.recv() => {
                 break;
-            }
+            },
+            dp_rx.recv() -> val => {
+                app_state.messages.push(MockMessage{
+                     username:String::from("DiscordProvider"), content: String::from(format!("-> {:?}", val))
+                });
+            },
         }
     }
     let term = Arc::clone(&terminal);
