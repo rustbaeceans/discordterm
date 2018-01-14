@@ -52,7 +52,6 @@ impl DiscordProvider {
             let evt = match connection.recv_event() {
                 Ok(x) => x,
                 Err(x) => {
-                    thread::sleep_ms(1000);
                     continue;
                 }
             };
