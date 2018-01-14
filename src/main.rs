@@ -22,13 +22,13 @@ use tui::widgets::{Widget, Block, Borders, Item, List, Paragraph};
 use tui::layout::{Group, Size, Direction};
 use tui::style::{Color, Style};
 
-struct MockMessage<'a> {
-    username: &'a str,
-    content: &'a str,
+struct MockMessage {
+    username: String,
+    content: String,
 }
 
-struct AppState<'a> {
-    messages: Vec<MockMessage<'a>>,
+struct AppState {
+    messages: Vec<MockMessage>,
 }
 
 fn main() {
@@ -36,13 +36,13 @@ fn main() {
     let backend = RawBackend::new().unwrap();
 
     let example_message = MockMessage {
-        username: "Namtsua",
-        content: "I love fidget spinners",
+        username: String::from("Namtsua"),
+        content: String::from("I love fidget spinners"),
     };
 
     let example_message2 = MockMessage {
-        username: "harbo",
-        content: "Let's relax",
+        username: String::from("harbo"),
+        content: String::from("Let's relax"),
     };
 
     let mut terminal = Terminal::new(backend).unwrap();
@@ -103,7 +103,7 @@ fn draw(t: &mut Terminal<RawBackend>, state: &mut AppState) {
 
     let msgs = state.messages.iter().map( |msg| {
         Item::StyledData(
-            format!("{}: {}", msg.username, msg.content),
+            format!("{}: {}", &msg.username[..], &msg.content[..]),
             &style,
         )
     });
