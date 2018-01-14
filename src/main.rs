@@ -78,7 +78,16 @@ impl<'a> AppState<'a> {
         self.content = String::from("");
     }
     fn active_server_index(&self) -> usize {
-        0 //TODO
+        match self.active_server {
+            Some(server) => {
+                let id = server.server_info.id.0;
+                let index = self.servers.iter().enumerate().find(|&(_, server)| {
+                    server.server_info.id.0 == id
+                }).unwrap().0;
+                index
+            },
+            None => 0
+        }
     }
 }
 
@@ -122,8 +131,37 @@ fn main() {
         active_server: None,
         servers: vec!(),
         selected_tab: TabSelect::Channels,
-   };
+    };
 
+    let test_server1 = Server {
+        channels: vec!(),
+        server_info: discord::model::ServerInfo {
+            id: discord::model::ServerId {
+                0: 1234,
+            },
+            name: String::from("Test Server 1"),
+            icon: None,
+            owner: true,
+            permissions: discord::model::permissions::Permissions::empty(),
+        },
+    };
+
+    let test_server2 = Server {
+        channels: vec!(),
+        server_info: discord::model::ServerInfo {
+            id: discord::model::ServerId {
+                0: 12345,
+            },
+            name: String::from("Test Server 2"),
+            icon: None,
+            owner: true,
+            permissions: discord::model::permissions::Permissions::empty(),
+        },
+    };
+
+
+    app_state.servers.push(test_server1);
+    app_state.servers.push(test_server2);
     let terminal = Arc::new(Mutex::new(terminal));
     let app_state = Arc::new(Mutex::new(app_state));
 
@@ -165,7 +203,10 @@ fn main() {
                     app_state.remove_character();
                 },
                 event::Key::Down => {
-                    
+                    let current_index = app_state.active_server_index();
+                    let new_index = current_index + 1 % app_state.servers.len();
+                    let new_server = &app_state.servers[new_index];
+                    app_state.active_server = Some(new_server);
                 },
                 event::Key::Up => {
                     
