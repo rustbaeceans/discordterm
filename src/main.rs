@@ -450,17 +450,24 @@ fn draw_top(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
         .direction(Direction::Horizontal)
         .sizes(&[Size::Percent(20), Size::Min(0)])
         .render(t, area, |t, chunks| {
+            let active_server = &state.servers[state.active_server];
+            let mut msgs: Vec<discord::model::Message> = vec!();
 
-            let n = state.messages.len();
+            if (active_server.channels.len() > 0) {
+                let active_channel = &active_server.channels[active_server.active_channel];
+                msgs = active_channel.messages.clone();
+            }
+
+            let n = msgs.len();
             let nm = chunks[1].height as usize;
             let left_bound: usize = match n.checked_sub(nm) {
                 Some(x) => x,
                 None => 0,
             };
 
-            let msgs = state.messages[left_bound..n].iter().map( |msg| {
+            let msgs = msgs[0..n].iter().map( |msg| {
                 Item::StyledData(
-                    format!("{}: {}", &msg.username[..], &msg.content[..]),
+                    format!("{}: {}", &msg.author.name[..], &msg.content[..]),
                     &style,
                 )
             });
