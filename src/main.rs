@@ -46,6 +46,8 @@ struct AppState {
     servers: Vec<Server>,
     active_server: usize,
     selected_tab: TabSelect,
+    to_provider: chan::Sender<MsgToDiscord>,
+    from_provider: chan::Receiver<MsgFromDiscord>,
 }
 
 struct Server {
@@ -169,21 +171,6 @@ fn main() {
     ));
     thread::spawn(|| { provider.start_provider(); });
 
-    for i in 1..6 {
-        channel_to_discord.0.send(MsgToDiscord::Echo(
-            String::from(format!("Test #{}", i)),
-        ));
-    }
-    let example_message = MockMessage {
-        username: String::from("Namtsua"),
-        content: String::from("I love fidget spinners"),
-    };
-
-    let example_message2 = MockMessage {
-        username: String::from("harbo"),
-        content: String::from("Let's relax"),
-    };
-
     let example_message3 = String::from("test");
     channel_to_discord.0.send(MsgToDiscord::SendMessage(
         discord::model::ChannelId {
@@ -193,12 +180,14 @@ fn main() {
     ));
     let mut terminal = Terminal::new(backend).unwrap();
     let mut app_state = AppState {
-        messages: vec![example_message, example_message2],
+        messages: vec![],
         content: String::from(""),
         offset: 0,
         active_server: 0,
-        servers: vec!(),
+        servers: vec![],
         selected_tab: TabSelect::Channels,
+        to_provider: channel_to_discord.0.clone(),
+        from_provider: channel_from_discord.1.clone(),
     };
 
     let test_channel1 = Channel {
@@ -206,7 +195,7 @@ fn main() {
         id: discord::model::ChannelId {
             0: 1,
         },
-        messages: vec!(),
+        messages: vec![],
     };
 
     let test_channel2 = Channel {
@@ -214,7 +203,7 @@ fn main() {
         id: discord::model::ChannelId {
             0: 2,
         },
-        messages: vec!(),
+        messages: vec![],
     };
 
     let test_channel3 = Channel {
@@ -222,7 +211,7 @@ fn main() {
         id: discord::model::ChannelId {
             0: 3,
         },
-        messages: vec!(),
+        messages: vec![],
     };
 
     let test_channel4 = Channel {
@@ -230,12 +219,12 @@ fn main() {
         id: discord::model::ChannelId {
             0: 4,
         },
-        messages: vec!(),
+        messages: vec![],
     };
 
 
     let test_server1 = Server {
-        channels: vec!(test_channel1, test_channel2),
+        channels: vec![test_channel1, test_channel2],
         active_channel: 0,
         server_info: discord::model::ServerInfo {
             id: discord::model::ServerId {
@@ -249,7 +238,7 @@ fn main() {
     };
 
     let test_server2 = Server {
-        channels: vec!(test_channel3, test_channel4),
+        channels: vec![test_channel3, test_channel4],
         active_channel: 0,
         server_info: discord::model::ServerInfo {
             id: discord::model::ServerId {
