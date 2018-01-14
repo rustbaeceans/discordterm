@@ -49,6 +49,9 @@ impl AppState {
             self.content = String::from(&self.content[..n-1]);
         }
     }
+    fn send_message(&mut self) {
+        self.content = String::from("");
+    }
 }
 
 fn read_token() -> String {
@@ -108,6 +111,9 @@ fn main() {
 
             let evt = c.unwrap();
             match evt {
+                event::Key::Char('\n') => {
+                    app_state.send_message();
+                },
                 event::Key::Char(chr) => {
                     app_state.add_character(chr);
                     terminal.show_cursor().unwrap();
