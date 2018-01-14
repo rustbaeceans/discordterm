@@ -8,48 +8,76 @@ use std::thread;
 use std::sync::{Arc, Mutex};
 
 use std::io;
+use std::vec::Vec;
+
+use discord::model::Message;
 
 use termion::event;
+use termion::event::Key;
 use termion::input::TermRead;
 
 use tui::Terminal;
 use tui::backend::RawBackend;
-use tui::widgets::{Widget, Block, Borders, Paragraph};
+use tui::widgets::{Widget, Block, Borders, Item, List, Paragraph};
 use tui::layout::{Group, Size, Direction};
+use tui::style::{Color, Style};
 
 mod discord_provider;
 
-struct AppState {
+struct MockMessage<'a> {
+    username: &'a str,
+    content: &'a str,
+}
 
+struct AppState<'a> {
+    messages: Vec<MockMessage<'a>>,
 }
 
 fn main() {
 
     let backend = RawBackend::new().unwrap();
+
+    let example_message = MockMessage {
+        username: "Namtsua",
+        content: "I love fidget spinners",
+    };
+
+    let example_message2 = MockMessage {
+        username: "harbo",
+        content: "Let's relax",
+    };
+
     let mut terminal = Terminal::new(backend).unwrap();
+    let mut app_state = AppState {
+        messages: vec!(example_message, example_message2),
+    };
 
     let terminal = Arc::new(Mutex::new(terminal));
+    let app_state = Arc::new(Mutex::new(app_state));
 
     let term = Arc::clone(&terminal);
+    let state = Arc::clone(&app_state);
     term.lock().unwrap().clear().unwrap();
-    draw(&mut term.lock().unwrap());
+    draw(&mut term.lock().unwrap(), &mut state.lock().unwrap());
 
     let stdin = io::stdin();
     let (tx, rx) = chan::async();
 
     let term = Arc::clone(&terminal);
+    let state = Arc::clone(&app_state);
     thread::spawn(move || {
         let tx = tx.clone();
 
         for c in stdin.keys() {
             let mut terminal = term.lock().unwrap();
+            let mut app_state = state.lock().unwrap();
 
             let evt = c.unwrap();
-            if evt == event::Key::Char('q') {
-                tx.send(true);
-                break;
+            match evt {
+                Key::Ctrl('c') => { tx.send(true); break; },
+                _ => {},
             }
-            draw(&mut terminal);
+            draw(&mut terminal, &mut app_state);
         }
     });
 
@@ -68,12 +96,22 @@ fn main() {
 
 }
 
-fn draw(t: &mut Terminal<RawBackend>) {
+fn draw(t: &mut Terminal<RawBackend>, state: &mut AppState) {
     let size = t.size().unwrap();
 
-    Paragraph::default()
-        .text("Block")
-        .block(Block::default().borders(Borders::ALL).title("Terminal"))
+    let state = &*state;
+
+    let style = Style::default().fg(Color::Yellow);
+
+    let msgs = state.messages.iter().map( |msg| {
+        Item::StyledData(
+            format!("{}: {}", msg.username, msg.content),
+            &style,
+        )
+    });
+
+    List::new(msgs)
+        .block(Block::default().borders(Borders::ALL).title("Discord"))
         .render(t, &size);
 
     t.draw();
