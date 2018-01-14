@@ -139,16 +139,18 @@ fn main() {
     let dp_rx = provider_chan.1;
     let state = Arc::clone(&app_state);
     loop {
-        let mut app_state = state.lock().unwrap();
-app_state.messages.push(MockMessage{
-                     username:String::from("test"), content: String::from("hey")
-                });
+// app_state.messages.push(MockMessage{
+//                      username:String::from("test"), content: String::from("hey")
+//                 });
         chan_select! {
             default => {},
             rx.recv() => {
                 break;
             },
             dp_rx.recv() -> val => {
+                let mut app_state = state.lock().unwrap();
+                println!("Adding message to list");
+                break;
                 app_state.messages.push(MockMessage{
                      username:String::from("DiscordProvider"), content: String::from(format!("-> {:?}", val))
                 });
