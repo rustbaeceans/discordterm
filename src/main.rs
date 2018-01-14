@@ -41,11 +41,33 @@ enum TabSelect {
 struct AppState {
     messages: Vec<MockMessage>,
     content: String,
-    channels: Vec<String>,
-    selected_channel: usize,
-    servers: Vec<String>,
-    selected_server: usize,
+    servers: Vec<Server>,
+    active_server: usize,
     selected_tab: TabSelect,
+}
+
+struct Server {
+    channels: Vec<Channel>,
+    active_channel: usize,
+    server_info: discord::model::ServerInfo,
+}
+
+impl AsRef<str> for Server {
+    fn as_ref(&self) -> &str {
+       &self.server_info.name
+    }
+}
+
+struct Channel {
+    name: String,
+    id: discord::model::ChannelId,
+    messages: Vec<discord::model::Message>,
+}
+
+impl AsRef<str> for Channel {
+    fn as_ref(&self) -> &str {
+       &self.name
+    }
 }
 
 impl AppState {
@@ -111,13 +133,75 @@ fn main() {
     let mut app_state = AppState {
         messages: vec![example_message, example_message2],
         content: String::from(""),
-        channels: vec![String::from("general"), String::from("baes-only")], // TODO: Add real channels
-        selected_channel: 0,
-        servers: vec![String::from("Server 1"), String::from("Server 2")], // TODO: Add real servers
-        selected_server: 0,
+        active_server: 0,
+        servers: vec!(),
         selected_tab: TabSelect::Channels,
     };
 
+    let test_channel1 = Channel {
+        name: String::from("Test Channel S1 - 1"),
+        id: discord::model::ChannelId {
+            0: 1,
+        },
+        messages: vec!(),
+    };
+
+    let test_channel2 = Channel {
+        name: String::from("Test Channel S1 - 2"),
+        id: discord::model::ChannelId {
+            0: 2,
+        },
+        messages: vec!(),
+    };
+
+    let test_channel3 = Channel {
+        name: String::from("Test Channel S2 - 3"),
+        id: discord::model::ChannelId {
+            0: 3,
+        },
+        messages: vec!(),
+    };
+
+    let test_channel4 = Channel {
+        name: String::from("Test Channel S2 - 4"),
+        id: discord::model::ChannelId {
+            0: 4,
+        },
+        messages: vec!(),
+    };
+
+
+    let test_server1 = Server {
+        channels: vec!(test_channel1, test_channel2),
+        active_channel: 0,
+        server_info: discord::model::ServerInfo {
+            id: discord::model::ServerId {
+                0: 1234,
+            },
+            name: String::from("Test Server 1"),
+            icon: None,
+            owner: true,
+            permissions: discord::model::permissions::Permissions::empty(),
+        },
+    };
+
+    let test_server2 = Server {
+        channels: vec!(test_channel3, test_channel4),
+        active_channel: 0,
+        server_info: discord::model::ServerInfo {
+            id: discord::model::ServerId {
+                0: 12345,
+            },
+            name: String::from("Test Server 2"),
+            icon: None,
+            owner: true,
+            permissions: discord::model::permissions::Permissions::empty(),
+        },
+    };
+
+
+    app_state.servers.push(test_server1);
+    app_state.servers.push(test_server2);
     let terminal = Arc::new(Mutex::new(terminal));
     let app_state = Arc::new(Mutex::new(app_state));
 
@@ -161,41 +245,37 @@ fn main() {
                 event::Key::Down => {
                     match app_state.selected_tab {
                         TabSelect::Servers => {
-                            app_state.selected_server += 1;
-                            if app_state.selected_server > app_state.servers.len() - 1 {
-                                app_state.selected_server = 0;
-                            }
-                        }
+                            let new_index = (app_state.active_server + 1) % app_state.servers.len();
+                            app_state.active_server = new_index
+                        },
                         TabSelect::Channels => {
-                            app_state.selected_channel += 1;
-                            if app_state.selected_channel > app_state.channels.len() - 1 {
-                                app_state.selected_channel = 0;
-                            }
-                        }
-                        _ => {}
-                    };
-
-                }
+                            let active_server_index = app_state.active_server;
+                            let mut active_server = &mut app_state.servers[active_server_index];
+                            let new_index = (active_server.active_channel + 1) % active_server.channels.len();
+                            active_server.active_channel = new_index;
+                        },
+                    }
+                },
                 event::Key::Up => {
                     match app_state.selected_tab {
                         TabSelect::Servers => {
-                            if app_state.selected_server > 0 {
-                                app_state.selected_server -= 1;
+                            if app_state.active_server > 0 {
+                                app_state.active_server -= 1;
                             } else {
-                                app_state.selected_server = app_state.servers.len() - 1;
+                                app_state.active_server = app_state.servers.len() - 1;  
                             }
-                        }
+                        },
                         TabSelect::Channels => {
-                            if app_state.selected_channel > 0 {
-                                app_state.selected_channel -= 1;
+                            let active_server_index = app_state.active_server;
+                            let mut active_server = &mut app_state.servers[active_server_index];
+                            if active_server.active_channel > 0 {
+                                active_server.active_channel -= 1;
                             } else {
-                                app_state.selected_channel = app_state.channels.len() - 1;
+                                active_server.active_channel = active_server.channels.len() - 1;
                             }
-                        }
-                        _ => {}
-                    };
-
-                }
+                        },
+                    }
+                },
                 event::Key::Ctrl('c') => {
                     tx.send(true);
                     break;
@@ -252,7 +332,7 @@ fn main() {
 
 fn draw(t: &mut Terminal<RawBackend>, state: &AppState) {
     let size = t.size().unwrap();
-    let channel_name = &state.channels[state.selected_channel];
+    let channel_name = "temp1";
 
     Group::default()
         .direction(Direction::Vertical)
@@ -272,7 +352,7 @@ fn draw(t: &mut Terminal<RawBackend>, state: &AppState) {
 
 fn draw_top(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
     let style = Style::default().fg(Color::Yellow);
-    let channel_name = &state.channels[state.selected_channel];
+    let channel_name = "temp2";
 
     Group::default()
         .direction(Direction::Horizontal)
@@ -298,20 +378,23 @@ fn draw_left(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
         .direction(Direction::Vertical)
         .sizes(&[Size::Percent(50), Size::Percent(50)])
         .render(t, area, |t, chunks| {
+
+
             SelectableList::default()
                 .block(Block::default().borders(Borders::ALL).title("Servers"))
                 .items(&state.servers)
-                .select(state.selected_server)
+                .select(state.active_server)
                 .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::Bold))
                 .highlight_symbol(">")
                 .render(t, &chunks[0]);
 
             SelectableList::default()
                 .block(Block::default().borders(Borders::ALL).title("Channels"))
-                .items(&state.channels)
-                .select(state.selected_channel)
+                .items(&state.servers[state.active_server].channels)
+                .select(state.servers[state.active_server].active_channel)
                 .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::Bold))
                 .highlight_symbol(">")
                 .render(t, &chunks[1]);
+
         });
 }
