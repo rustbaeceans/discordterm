@@ -79,7 +79,7 @@ impl AppState {
     fn remove_character(&mut self) {
         let n = self.content.chars().count();
         if (n != 0) {
-            self.content = String::from(&self.content[..n-1]);
+            self.content = String::from(&self.content[..n - 1]);
         }
     }
     fn send_message(&mut self) {
@@ -88,12 +88,15 @@ impl AppState {
 }
 
 fn read_token() -> String {
-  let mut data = String::new();
+    let mut data = String::new();
     let mut f = match File::open("./token") {
         Ok(x) => x,
-        Err(x) => {println!("Couldn't log in."); return String::from("0");}
+        Err(x) => {
+            println!("Couldn't log in.");
+            return String::from("0");
+        }
     };
-    
+
     f.read_to_string(&mut data).expect("Unable to read string");
     data
 }
@@ -105,13 +108,16 @@ fn main() {
     let channel_to_discord = chan::async();
     let channel_from_discord = chan::async();
     // give provider the from_discord sender and the to_discord receiver
-    let provider = DiscordProvider::init(read_token(), (channel_from_discord.0.clone(),
-        channel_to_discord.1.clone()));
-    thread::spawn(move || {
-        provider.outgoing_loop();
-    });
+    let provider = DiscordProvider::init(read_token(), (
+        channel_from_discord.0.clone(),
+        channel_to_discord.1.clone(),
+    ));
+    thread::spawn(|| { provider.outgoing_loop(); });
+
     for i in 1..6 {
-        channel_to_discord.0.send(MsgToDiscord::Echo(String::from(format!("Test #{}", i))));
+        channel_to_discord.0.send(MsgToDiscord::Echo(
+            String::from(format!("Test #{}", i)),
+        ));
     }
     let example_message = MockMessage {
         username: String::from("Namtsua"),
@@ -125,7 +131,7 @@ fn main() {
 
     let mut terminal = Terminal::new(backend).unwrap();
     let mut app_state = AppState {
-        messages: vec!(example_message, example_message2),
+        messages: vec![example_message, example_message2],
         content: String::from(""),
         active_server: 0,
         servers: vec!(),
@@ -222,20 +228,20 @@ fn main() {
             match evt {
                 event::Key::Char('\n') => {
                     app_state.send_message();
-                },
+                }
                 event::Key::Char('\t') => {
                     app_state.selected_tab = match app_state.selected_tab {
                         TabSelect::Servers => TabSelect::Channels,
                         TabSelect::Channels => TabSelect::Servers,
                     }
-                },
+                }
                 event::Key::Char(chr) => {
                     app_state.add_character(chr);
                     terminal.show_cursor().unwrap();
-                },
+                }
                 event::Key::Backspace => {
                     app_state.remove_character();
-                },
+                }
                 event::Key::Down => {
                     match app_state.selected_tab {
                         TabSelect::Servers => {
@@ -273,8 +279,8 @@ fn main() {
                 event::Key::Ctrl('c') => {
                     tx.send(true);
                     break;
-                },
-                _ => {},
+                }
+                _ => {}
             }
             draw(&mut terminal, &mut app_state);
         }
@@ -285,17 +291,16 @@ fn main() {
 
     let term = Arc::clone(&terminal);
     let state = Arc::clone(&app_state);
-    thread::spawn(move || {
-        loop {
-            thread::sleep(time::Duration::from_secs(1));
-            let mut terminal = term.lock().unwrap();
-            let mut app_state = state.lock().unwrap();
+    thread::spawn(move || loop {
+        thread::sleep(time::Duration::from_secs(1));
+        let mut terminal = term.lock().unwrap();
+        let mut app_state = state.lock().unwrap();
 
-            app_state.messages.push(MockMessage{
-                 username:String::from("test"), content: String::from("hey")
-            });
-            draw(&mut terminal, &mut app_state);
-        }
+        app_state.messages.push(MockMessage {
+            username: String::from("test"),
+            content: String::from("hey"),
+        });
+        draw(&mut terminal, &mut app_state);
     });
 
     let term = Arc::clone(&terminal);
