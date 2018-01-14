@@ -234,13 +234,37 @@ fn main() {
                     app_state.remove_character();
                 },
                 event::Key::Down => {
-                    app_state.active_server = (app_state.active_server + 1) % app_state.servers.len();
+                    match app_state.selected_tab {
+                        TabSelect::Servers => {
+                            let new_index = (app_state.active_server + 1) % app_state.servers.len();
+                            app_state.active_server = new_index
+                        },
+                        TabSelect::Channels => {
+                            let active_server_index = app_state.active_server;
+                            let mut active_server = &mut app_state.servers[active_server_index];
+                            let new_index = (active_server.active_channel + 1) % active_server.channels.len();
+                            active_server.active_channel = new_index;
+                        },
+                    }
                 },
                 event::Key::Up => {
-                    if app_state.active_server > 0 {
-                        app_state.active_server -= 1;
-                    } else {
-                        app_state.active_server = app_state.servers.len() - 1;
+                    match app_state.selected_tab {
+                        TabSelect::Servers => {
+                            if app_state.active_server > 0 {
+                                app_state.active_server -= 1;
+                            } else {
+                                app_state.active_server = app_state.servers.len() - 1;  
+                            }
+                        },
+                        TabSelect::Channels => {
+                            let active_server_index = app_state.active_server;
+                            let mut active_server = &mut app_state.servers[active_server_index];
+                            if active_server.active_channel > 0 {
+                                active_server.active_channel -= 1;
+                            } else {
+                                active_server.active_channel = active_server.channels.len() - 1;
+                            }
+                        },
                     }
                 },
                 event::Key::Ctrl('c') => {
@@ -358,7 +382,7 @@ fn draw_left(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
             SelectableList::default()
                 .block(Block::default().borders(Borders::ALL).title("Channels"))
                 .items(&state.servers[state.active_server].channels)
-                .select(0)
+                .select(state.servers[state.active_server].active_channel)
                 .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::Bold))
                 .highlight_symbol(">")
                 .render(t, &chunks[1]);
