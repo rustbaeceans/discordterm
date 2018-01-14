@@ -33,6 +33,11 @@ struct MockMessage {
     content: String,
 }
 
+enum TabSelect {
+    Channels,
+    Servers,
+}
+
 struct AppState {
     messages: Vec<MockMessage>,
     content: String,
@@ -40,7 +45,7 @@ struct AppState {
     selected_channel: usize,
     servers: Vec<String>,
     selected_server: usize,
-    selected_tab: usize,
+    selected_tab: TabSelect,
 }
 
 impl AppState {
@@ -99,7 +104,7 @@ fn main() {
         selected_channel: 0,
         servers: vec![String::from("Server 1"), String::from("Server 2")], // TODO: Add real servers
         selected_server: 0,
-        selected_tab: 1,
+        selected_tab: TabSelect::Channels,
    };
 
     let terminal = Arc::new(Mutex::new(terminal));
@@ -130,10 +135,9 @@ fn main() {
                     app_state.send_message();
                 },
                 event::Key::Char('\t') => {
-                    if app_state.selected_tab == 0 {
-                        app_state.selected_tab = 1;
-                    } else {
-                        app_state.selected_tab = 0;
+                    app_state.selected_tab = match app_state.selected_tab {
+                        TabSelect::Servers => TabSelect::Channels,
+                        TabSelect::Channels => TabSelect::Servers,
                     }
                 },
                 event::Key::Char(chr) => {
@@ -145,13 +149,13 @@ fn main() {
                 },
                 event::Key::Down => {
                     match app_state.selected_tab {
-                        0 => {
+                        TabSelect::Servers => {
                             app_state.selected_server += 1;
                             if app_state.selected_server > app_state.servers.len() - 1 {
                                 app_state.selected_server = 0;
                             }
                         }
-                        1 => {
+                        TabSelect::Channels => {
                             app_state.selected_channel += 1;
                             if app_state.selected_channel > app_state.channels.len() - 1 {
                                 app_state.selected_channel = 0;
@@ -163,14 +167,14 @@ fn main() {
                 },
                 event::Key::Up => {
                     match app_state.selected_tab {
-                        0 => {
+                        TabSelect::Servers => {
                             if app_state.selected_server > 0 {
                                 app_state.selected_server -= 1;
                             } else {
                                 app_state.selected_server = app_state.servers.len() - 1;
                             }
                         }
-                        1 => {
+                        TabSelect::Channels => {
                             if app_state.selected_channel > 0 {
                                 app_state.selected_channel -= 1;
                             } else {
