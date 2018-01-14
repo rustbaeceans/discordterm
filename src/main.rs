@@ -2,6 +2,7 @@
 extern crate chan;
 extern crate termion;
 extern crate tui;
+extern crate discord;
 
 use std::thread;
 use std::sync::{Arc, Mutex};
@@ -15,6 +16,8 @@ use tui::Terminal;
 use tui::backend::RawBackend;
 use tui::widgets::{Widget, Block, Borders, Paragraph};
 use tui::layout::{Group, Size, Direction};
+
+mod discord_provider;
 
 struct AppState {
 
