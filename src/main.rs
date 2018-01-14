@@ -132,7 +132,7 @@ fn draw(t: &mut Terminal<RawBackend>, state: &mut AppState) {
 
     Group::default()
         .direction(Direction::Vertical)
-        .sizes(&[Size::Percent(90), Size::Percent(10)])
+        .sizes(&[Size::Min(0), Size::Fixed(3)])
         .render(t, &size, |t, chunks| {
             let msgs = state.messages.iter().map( |msg| {
                 Item::StyledData(
