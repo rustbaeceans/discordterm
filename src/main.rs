@@ -156,6 +156,18 @@ impl AppState {
             }
         }).collect();
     }
+
+    fn store_message(&mut self, message: discord::model::Message) {
+        let channel_id = message.channel_id;
+        for server in self.servers.iter_mut() {
+            for channel in server.channels.iter_mut() {
+                if channel.id == channel_id {
+                    channel.messages.push(message);
+                    return;
+                }
+            }
+        }
+    }
 }
 
 impl Server {
@@ -387,6 +399,9 @@ fn main() {
                         MsgFromDiscord::Channels(server_id, channels) => {
                             app_state.set_channels(server_id, channels)
                         },
+                        MsgFromDiscord::ChatMsg(message) => {
+                            app_state.store_message(message);
+                        }
                         _ => {
                             app_state.messages.push(MockMessage{
                                 username: String::from("DiscordProvider"),
