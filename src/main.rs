@@ -41,6 +41,7 @@ enum TabSelect {
 struct AppState {
     messages: Vec<MockMessage>,
     content: String,
+    offset: usize,
     servers: Vec<Server>,
     active_server: usize,
     selected_tab: TabSelect,
@@ -74,12 +75,15 @@ impl AppState {
     fn add_character(&mut self, chr: char) {
         let mut content_to_append = String::new();
         content_to_append.push(chr);
-        self.content = format!("{}{}", self.content, content_to_append);
+        let end = self.content.len();
+        self.content = format!("{}{}{}", &self.content[0..self.offset], content_to_append, &self.content[self.offset..end]);
+        self.offset += 1;
     }
     fn remove_character(&mut self) {
-        let n = self.content.chars().count();
+        let n = self.content.len();
         if (n != 0) {
-            self.content = String::from(&self.content[..n-1]);
+            self.content = format!("{}{}", &self.content[..self.offset-1], &self.content[self.offset..n]);
+            self.offset -= 1;
         }
     }
     fn send_message(&mut self) {
@@ -93,7 +97,7 @@ fn read_token() -> String {
         Ok(x) => x,
         Err(x) => {println!("Couldn't log in."); return String::from("0");}
     };
-    
+
     f.read_to_string(&mut data).expect("Unable to read string");
     data
 }
@@ -127,6 +131,7 @@ fn main() {
     let mut app_state = AppState {
         messages: vec!(example_message, example_message2),
         content: String::from(""),
+        offset: 0,
         active_server: 0,
         servers: vec!(),
         selected_tab: TabSelect::Channels,
@@ -363,7 +368,7 @@ fn draw_top(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
             draw_left(t, state, &chunks[0]);
 
             List::new(msgs)
-                .block(Block::default().borders(Borders::ALL).title(&format!("#{}", channel_name)[..])) //  <-- TODO: Figure out why this makes it slower
+                .block(Block::default().borders(Borders::ALL).title(&format!("#{}", channel_name)[..]))
                 .render(t, &chunks[1]);
         });
 }
