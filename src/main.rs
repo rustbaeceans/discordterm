@@ -475,7 +475,7 @@ fn draw(t: &mut Terminal<RawBackend>, state: &AppState) {
 
 fn draw_top(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
     let style = Style::default().fg(Color::Yellow);
-    let channel_name = "temp2";
+    let mut channel_name = "temp2";
 
     Group::default()
         .direction(Direction::Horizontal)
@@ -487,6 +487,7 @@ fn draw_top(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
             if (active_server.channels.len() > 0) {
                 let active_channel = &active_server.channels[active_server.active_channel];
                 msgs = active_channel.messages.clone();
+                channel_name = &active_channel.name[..];
             }
 
             let n = msgs.len();
