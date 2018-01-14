@@ -38,17 +38,31 @@ enum TabSelect {
     Servers,
 }
 
-struct AppState {
+struct AppState<'a> {
     messages: Vec<MockMessage>,
     content: String,
-    channels: Vec<String>,
-    selected_channel: usize,
-    servers: Vec<String>,
-    selected_server: usize,
+    servers: Vec<Server>,
+    active_server: Option<&'a Server>,
     selected_tab: TabSelect,
 }
 
-impl AppState {
+struct Server {
+    channels: Vec<Channel>,
+    server_info: discord::model::ServerInfo,
+}
+
+impl AsRef<str> for Server {
+    fn as_ref(&self) -> &str {
+       &self.server_info.name
+    }
+}
+
+struct Channel {
+    id: discord::model::ChannelId,
+    messages: Vec<discord::model::Message>,
+}
+
+impl<'a> AppState<'a> {
     fn add_character(&mut self, chr: char) {
         let mut content_to_append = String::new();
         content_to_append.push(chr);
@@ -62,6 +76,9 @@ impl AppState {
     }
     fn send_message(&mut self) {
         self.content = String::from("");
+    }
+    fn active_server_index(&self) -> usize {
+        0 //TODO
     }
 }
 
@@ -102,10 +119,8 @@ fn main() {
     let mut app_state = AppState {
         messages: vec!(example_message, example_message2),
         content: String::from(""),
-        channels: vec![String::from("general"), String::from("baes-only")], // TODO: Add real channels
-        selected_channel: 0,
-        servers: vec![String::from("Server 1"), String::from("Server 2")], // TODO: Add real servers
-        selected_server: 0,
+        active_server: None,
+        servers: vec!(),
         selected_tab: TabSelect::Channels,
    };
 
@@ -150,41 +165,9 @@ fn main() {
                     app_state.remove_character();
                 },
                 event::Key::Down => {
-                    match app_state.selected_tab {
-                        TabSelect::Servers => {
-                            app_state.selected_server += 1;
-                            if app_state.selected_server > app_state.servers.len() - 1 {
-                                app_state.selected_server = 0;
-                            }
-                        }
-                        TabSelect::Channels => {
-                            app_state.selected_channel += 1;
-                            if app_state.selected_channel > app_state.channels.len() - 1 {
-                                app_state.selected_channel = 0;
-                            }
-                        }
-                        _ => {}
-                    };
                     
                 },
                 event::Key::Up => {
-                    match app_state.selected_tab {
-                        TabSelect::Servers => {
-                            if app_state.selected_server > 0 {
-                                app_state.selected_server -= 1;
-                            } else {
-                                app_state.selected_server = app_state.servers.len() - 1;
-                            }
-                        }
-                        TabSelect::Channels => {
-                            if app_state.selected_channel > 0 {
-                                app_state.selected_channel -= 1;
-                            } else {
-                                app_state.selected_channel = app_state.channels.len() - 1;
-                            }
-                        }
-                        _ => {}
-                    };
                     
                 },
                 event::Key::Ctrl('c') => {
@@ -243,7 +226,7 @@ fn main() {
 
 fn draw(t: &mut Terminal<RawBackend>, state: &AppState) {
     let size = t.size().unwrap();
-    let channel_name = &state.channels[state.selected_channel];
+    let channel_name = "temp1";
 
     Group::default()
         .direction(Direction::Vertical)
@@ -263,7 +246,7 @@ fn draw(t: &mut Terminal<RawBackend>, state: &AppState) {
 
 fn draw_top(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
     let style = Style::default().fg(Color::Yellow);
-    let channel_name = &state.channels[state.selected_channel];
+    let channel_name = "temp2";
 
     Group::default()
         .direction(Direction::Horizontal)
@@ -289,14 +272,16 @@ fn draw_left(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
         .direction(Direction::Vertical)
         .sizes(&[Size::Percent(50), Size::Percent(50)])
         .render(t, area, |t, chunks| {
+
+
             SelectableList::default()
                 .block(Block::default().borders(Borders::ALL).title("Servers"))
                 .items(&state.servers)
-                .select(state.selected_server)
+                .select(state.active_server_index())
                 .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::Bold))
                 .highlight_symbol(">")
                 .render(t, &chunks[0]);
-
+/*
             SelectableList::default()
                 .block(Block::default().borders(Borders::ALL).title("Channels"))
                 .items(&state.channels)
@@ -304,5 +289,6 @@ fn draw_left(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
                 .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::Bold))
                 .highlight_symbol(">")
                 .render(t, &chunks[1]);
+                */
         });
 }
