@@ -37,6 +37,8 @@ struct AppState {
     content: String,
     channels: Vec<String>,
     selected_channel: usize,
+    servers: Vec<String>,
+    selected_server: usize,
 }
 
 impl AppState {
@@ -91,9 +93,11 @@ fn main() {
     let mut app_state = AppState {
         messages: vec!(example_message, example_message2),
         content: String::from(""),
-        channels: vec![String::from("Channel 1"), String::from("Channel 2")], // TODO: Add read channels
+        channels: vec![String::from("Channel 1"), String::from("Channel 2")], // TODO: Add real channels
         selected_channel: 0,
-    };
+        servers: vec![String::from("Server 1"), String::from("Server 2")], // TODO: Add real servers
+        selected_server: 0,
+   };
 
     let terminal = Arc::new(Mutex::new(terminal));
     let app_state = Arc::new(Mutex::new(app_state));
@@ -185,7 +189,7 @@ fn draw(t: &mut Terminal<RawBackend>, state: &mut AppState) {
 
     Group::default()
         .direction(Direction::Vertical)
-        .sizes(&[Size::Fixed(10), Size::Min(0), Size::Fixed(3)])
+        .sizes(&[Size::Fixed(10), Size::Fixed(10), Size::Min(0), Size::Fixed(3)])
         .render(t, &size, |t, chunks| {
             let msgs = state.messages.iter().map( |msg| {
                 Item::StyledData(
@@ -195,21 +199,29 @@ fn draw(t: &mut Terminal<RawBackend>, state: &mut AppState) {
             });
 
             SelectableList::default()
-                .block(Block::default().borders(Borders::ALL).title("Channels"))
-                .channels(&state.channels)
-                .select(state.selected_channel)
+                .block(Block::default().borders(Borders::ALL).title("Servers"))
+                .items(&state.servers)
+                .select(state.selected_server)
                 .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::Bold))
                 .highlight_symbol(">")
                 .render(t, &chunks[0]);
 
+            SelectableList::default()
+                .block(Block::default().borders(Borders::ALL).title("Channels"))
+                .items(&state.channels)
+                .select(state.selected_channel)
+                .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::Bold))
+                .highlight_symbol(">")
+                .render(t, &chunks[1]);
+
             List::new(msgs)
                 .block(Block::default().borders(Borders::ALL).title("#channel")) // TODO: use actual channel name
-                .render(t, &chunks[1]);
+                .render(t, &chunks[2]);
 
             Paragraph::default()
                 .text(&state.content[..])
                 .block(Block::default().borders(Borders::ALL).title("Message #channel")) // TODO: use actual channel name
-                .render(t, &chunks[2]);
+                .render(t, &chunks[3]);
         });
 
     t.draw();
