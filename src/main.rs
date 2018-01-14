@@ -85,6 +85,34 @@ impl AppState {
     fn send_message(&mut self) {
         self.content = String::from("");
     }
+    fn next_server(&mut self) {
+        let new_index = (self.active_server + 1) % self.servers.len();
+        self.active_server = new_index;
+    }
+    fn prev_server(&mut self) {
+        if self.active_server > 0 {
+            self.active_server -= 1;
+        } else {
+            self.active_server = self.servers.len() - 1;
+        }
+    }
+    fn active_server(&mut self) -> &mut Server {
+        &mut self.servers[self.active_server]
+    }
+}
+
+impl Server {
+    fn next_channel(&mut self) {
+        let new_index = (self.active_channel + 1) % self.channels.len();
+        self.active_channel = new_index;
+    }
+    fn prev_channel(&mut self) {
+        if self.active_channel > 0 {
+            self.active_channel -= 1;
+        } else {
+            self.active_channel = self.channels.len() - 1;
+        }
+    }
 }
 
 fn read_token() -> String {
@@ -235,36 +263,14 @@ fn main() {
                 },
                 event::Key::Down => {
                     match app_state.selected_tab {
-                        TabSelect::Servers => {
-                            let new_index = (app_state.active_server + 1) % app_state.servers.len();
-                            app_state.active_server = new_index
-                        },
-                        TabSelect::Channels => {
-                            let active_server_index = app_state.active_server;
-                            let mut active_server = &mut app_state.servers[active_server_index];
-                            let new_index = (active_server.active_channel + 1) % active_server.channels.len();
-                            active_server.active_channel = new_index;
-                        },
+                        TabSelect::Servers => app_state.next_server(),
+                        TabSelect::Channels => app_state.active_server().next_channel(),
                     }
                 },
                 event::Key::Up => {
                     match app_state.selected_tab {
-                        TabSelect::Servers => {
-                            if app_state.active_server > 0 {
-                                app_state.active_server -= 1;
-                            } else {
-                                app_state.active_server = app_state.servers.len() - 1;  
-                            }
-                        },
-                        TabSelect::Channels => {
-                            let active_server_index = app_state.active_server;
-                            let mut active_server = &mut app_state.servers[active_server_index];
-                            if active_server.active_channel > 0 {
-                                active_server.active_channel -= 1;
-                            } else {
-                                active_server.active_channel = active_server.channels.len() - 1;
-                            }
-                        },
+                        TabSelect::Servers => app_state.prev_server(),
+                        TabSelect::Channels => app_state.active_server().prev_channel(),
                     }
                 },
                 event::Key::Ctrl('c') => {
