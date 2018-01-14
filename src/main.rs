@@ -38,11 +38,11 @@ enum TabSelect {
     Servers,
 }
 
-struct AppState<'a> {
+struct AppState {
     messages: Vec<MockMessage>,
     content: String,
     servers: Vec<Server>,
-    active_server: Option<&'a Server>,
+    active_server: usize,
     selected_tab: TabSelect,
 }
 
@@ -58,11 +58,18 @@ impl AsRef<str> for Server {
 }
 
 struct Channel {
+    name: String,
     id: discord::model::ChannelId,
     messages: Vec<discord::model::Message>,
 }
 
-impl<'a> AppState<'a> {
+impl AsRef<str> for Channel {
+    fn as_ref(&self) -> &str {
+       &self.name
+    }
+}
+
+impl AppState {
     fn add_character(&mut self, chr: char) {
         let mut content_to_append = String::new();
         content_to_append.push(chr);
@@ -76,18 +83,6 @@ impl<'a> AppState<'a> {
     }
     fn send_message(&mut self) {
         self.content = String::from("");
-    }
-    fn active_server_index(&self) -> usize {
-        match self.active_server {
-            Some(server) => {
-                let id = server.server_info.id.0;
-                let index = self.servers.iter().enumerate().find(|&(_, server)| {
-                    server.server_info.id.0 == id
-                }).unwrap().0;
-                index
-            },
-            None => 0
-        }
     }
 }
 
@@ -128,13 +123,46 @@ fn main() {
     let mut app_state = AppState {
         messages: vec!(example_message, example_message2),
         content: String::from(""),
-        active_server: None,
+        active_server: 0,
         servers: vec!(),
         selected_tab: TabSelect::Channels,
     };
 
+    let test_channel1 = Channel {
+        name: String::from("Test Channel S1 - 1"),
+        id: discord::model::ChannelId {
+            0: 1,
+        },
+        messages: vec!(),
+    };
+
+    let test_channel2 = Channel {
+        name: String::from("Test Channel S1 - 2"),
+        id: discord::model::ChannelId {
+            0: 2,
+        },
+        messages: vec!(),
+    };
+
+    let test_channel3 = Channel {
+        name: String::from("Test Channel S2 - 3"),
+        id: discord::model::ChannelId {
+            0: 3,
+        },
+        messages: vec!(),
+    };
+
+    let test_channel4 = Channel {
+        name: String::from("Test Channel S2 - 4"),
+        id: discord::model::ChannelId {
+            0: 4,
+        },
+        messages: vec!(),
+    };
+
+
     let test_server1 = Server {
-        channels: vec!(),
+        channels: vec!(test_channel1, test_channel2),
         server_info: discord::model::ServerInfo {
             id: discord::model::ServerId {
                 0: 1234,
@@ -147,7 +175,7 @@ fn main() {
     };
 
     let test_server2 = Server {
-        channels: vec!(),
+        channels: vec!(test_channel3, test_channel4),
         server_info: discord::model::ServerInfo {
             id: discord::model::ServerId {
                 0: 12345,
@@ -203,13 +231,16 @@ fn main() {
                     app_state.remove_character();
                 },
                 event::Key::Down => {
-                    let current_index = app_state.active_server_index();
-                    let new_index = current_index + 1 % app_state.servers.len();
-                    let new_server = &app_state.servers[new_index];
-                    app_state.active_server = Some(new_server);
+                    let current_index = app_state.active_server;
+                    let new_index = (current_index + 1) % app_state.servers.len();
+                    app_state.active_server = new_index;
                 },
                 event::Key::Up => {
-                    
+                    if app_state.active_server > 0 {
+                        app_state.active_server -= 1;
+                    } else {
+                        app_state.active_server = app_state.servers.len();
+                    }
                 },
                 event::Key::Ctrl('c') => {
                     tx.send(true);
@@ -318,18 +349,18 @@ fn draw_left(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
             SelectableList::default()
                 .block(Block::default().borders(Borders::ALL).title("Servers"))
                 .items(&state.servers)
-                .select(state.active_server_index())
+                .select(state.active_server)
                 .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::Bold))
                 .highlight_symbol(">")
                 .render(t, &chunks[0]);
-/*
+
             SelectableList::default()
                 .block(Block::default().borders(Borders::ALL).title("Channels"))
-                .items(&state.channels)
-                .select(state.selected_channel)
+                .items(&state.servers[state.active_server].channels)
+                .select(0)
                 .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::Bold))
                 .highlight_symbol(">")
                 .render(t, &chunks[1]);
-                */
+
         });
 }
