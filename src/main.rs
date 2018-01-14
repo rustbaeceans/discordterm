@@ -66,6 +66,16 @@ struct Channel {
     messages: Vec<discord::model::Message>,
 }
 
+impl Channel {
+    fn send_message(&self, discord_chan: chan::Sender<MsgToDiscord>, content: String) {
+        let message = MsgToDiscord::SendMessage(
+            self.id,
+            content,
+        );
+        discord_chan.send(message);
+    }
+}
+
 impl AsRef<str> for Channel {
     fn as_ref(&self) -> &str {
        &self.name
@@ -157,7 +167,7 @@ fn main() {
         channel_from_discord.0.clone(),
         channel_to_discord.1.clone(),
     ));
-    thread::spawn(|| { provider.outgoing_loop(); });
+    thread::spawn(|| { provider.start_provider(); });
 
     for i in 1..6 {
         channel_to_discord.0.send(MsgToDiscord::Echo(
@@ -174,6 +184,13 @@ fn main() {
         content: String::from("Let's relax"),
     };
 
+    let example_message3 = String::from("test");
+    channel_to_discord.0.send(MsgToDiscord::SendMessage(
+        discord::model::ChannelId {
+            0: 402096812296503298,
+        },
+        example_message3,
+    ));
     let mut terminal = Terminal::new(backend).unwrap();
     let mut app_state = AppState {
         messages: vec![example_message, example_message2],
@@ -350,9 +367,13 @@ fn main() {
             rx_from_pvdr.recv() -> val => {
                 let mut terminal = term.lock().unwrap();
                 let mut app_state = state.lock().unwrap();
-                app_state.messages.push(MockMessage{
-                     username:String::from("DiscordProvider"), content: String::from(format!("{:?}", val))
-                });
+
+                if let Some(message) = val {
+                    app_state.messages.push(MockMessage{
+                        username: String::from("DiscordProvider"),
+                        content: String::from(format!("{:?}", message)),
+                    });
+                }
                 draw(&mut terminal, &mut app_state);
             },
         };

@@ -1,5 +1,7 @@
 use discord::Discord;
-use discord::model::{Message, Event};
+use discord::Connection;
+use discord::model;
+use discord::model::{ChannelId, Message, Event};
 use chan::{Sender, Receiver};
 use chan;
 use thread;
@@ -14,14 +16,15 @@ pub struct DiscordProvider {
 #[derive(Debug)]
 pub enum MsgFromDiscord {
     ChatMsg(Message),
-    ServerInfo(String),
-    EchoResponse(String),
+    EchoResponse(String)
 }
+
 #[derive(Debug)]
 pub enum MsgToDiscord {
-    RequestServerInfo,
-    Echo(String),
+    SendMessage(ChannelId, String),
+    Echo(String), // Testing echo back what we got
 }
+
 impl DiscordProvider {
     pub fn init(
         user_token: String,
@@ -29,9 +32,9 @@ impl DiscordProvider {
     ) -> Self {
         DiscordProvider {
             discord: match Discord::from_user_token(&user_token) {
-                Ok(x) => Some(x),
-                Err(x) => {
-                    println!("Couldn't log in! {:?}", x);
+                Ok(discord_client) => Some(discord_client),
+                Err(error) => {
+                    panic!("Login Failed: {}", error);
                     None
                 }
             },
@@ -39,52 +42,66 @@ impl DiscordProvider {
             rx: channel.1,
         }
     }
-    pub fn outgoing_loop(self) {
-        let mut connection = self.discord
-            .expect("Man u gotta log in to discord first!")
+
+    pub fn start_provider(self) {
+        let discord_client = self.discord
+            .expect("Login to discord first!");
+        let mut connection = discord_client
             .connect()
-            .expect("couldnt connect via websocket!")
+            .expect("Failed to initialize websocket connection")
             .0;
 
-        let ifacec = chan::sync(0);
-        let ifacetx = ifacec.0.clone();
-        thread::spawn(move || loop {
-            let evt = match connection.recv_event() {
-                Ok(x) => x,
-                Err(x) => {
-                    thread::sleep_ms(1000);
-                    continue;
-                }
-            };
-            ifacetx.send(evt);
-        });
-        let rx = self.rx;
-        let ifacerx = ifacec.1.clone();
-        loop {
-            chan_select! {
-                default => {},
-                rx.recv() -> val => {
-                    let x = val.unwrap();
-                    match x {
-                        MsgToDiscord::RequestServerInfo => {
+        let (sender, reciever) = chan::sync(0);
+        thread::spawn(move || monitor_websocket(connection, sender));
+        
+        handle_messages(discord_client, self.tx, self.rx, reciever)
+    }
+}
 
-                        },
-                        MsgToDiscord::Echo(s) => {
-                            self.tx.send(MsgFromDiscord::EchoResponse(s));
-                        }
-                    }
-                },
-                ifacerx.recv() -> val => {
-                    let evt = val.unwrap();
-                    match evt {
-                    Event::MessageCreate(msg) => {
-                            self.tx.send(MsgFromDiscord::ChatMsg(msg));
-                        },
-                        _ => {}
-                     }    
-                }, 
+fn monitor_websocket(mut connection: Connection, discord_sender: Sender<Event>) {
+    loop {
+        let event = match connection.recv_event() {
+            Ok(event) => event,
+            Err(error) => {
+                // Don't spam if something goes wrong
+                thread::sleep_ms(1000);
+                continue;
             }
-            thread::sleep_ms(50); // AAAAAAAAAAAAAAAAAAAUGH
+        };
+
+        discord_sender.send(event);
+    };
+}
+
+// Handle messages to and from the main module
+fn handle_messages(
+    discord: Discord,
+    ui_sender: Sender<MsgFromDiscord>,
+    ui_reciever: Receiver<MsgToDiscord>,
+    discord_reciever: Receiver<Event>) {
+    loop {
+        chan_select! {
+            default => {},
+            ui_reciever.recv() -> val => {
+                let message = val.unwrap();
+                match message {
+                    MsgToDiscord::SendMessage(channel, content) => {
+                        discord.send_message(channel, &content, "", false);
+                    },
+                    MsgToDiscord::Echo(message) => {
+                        ui_sender.send(MsgFromDiscord::EchoResponse(message));
+                    }
+                }
+            },
+            discord_reciever.recv() -> val => {
+                let event = val.unwrap();
+                match event {
+                    Event::MessageCreate(msg) => {
+                        ui_sender.send(MsgFromDiscord::ChatMsg(msg));
+                    },
+                    _ => {}
+                }
+            },
         }
     }
 }
