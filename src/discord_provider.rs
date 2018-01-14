@@ -1,6 +1,7 @@
 use discord::Discord;
 use discord::model::{Message};
 use chan::{Sender,Receiver};
+use thread;
 
 //#[derive(Debug)]
 pub struct DiscordProvider {
@@ -38,15 +39,19 @@ impl DiscordProvider {
     pub fn outgoing_loop(self) {
         loop {
            if let Msg::ToDiscord(x) = self.rx.recv().unwrap() {
+                println!("Received message: {:?}", x);
                 match x {
-                    RequestServerInfo => {
+                    MsgToDiscord::RequestServerInfo => {
 
                     },
                     MsgToDiscord::Echo(s) => {
+                        println!("Sending response");
                         self.tx.send(Msg::FromDiscord(MsgFromDiscord::EchoResponse(s)));
+                        println!("Sent response");
                     }
                 } 
            }
+           thread::sleep_ms(500); // AAAAAAAAAAAAAAAAAAAUGH
         }
     }
 }

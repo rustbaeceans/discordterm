@@ -75,7 +75,9 @@ fn main() {
     thread::spawn(move || {
         provider.outgoing_loop();
     });
-    provider_chan.0.send(Msg::ToDiscord(MsgToDiscord::Echo(String::from("Test!"))));
+    for i in 1..5 {
+        provider_chan.0.send(Msg::ToDiscord(MsgToDiscord::Echo(String::from("Test!"))));
+    }
     let example_message = MockMessage {
         username: String::from("Namtsua"),
         content: String::from("I love fidget spinners"),
@@ -136,7 +138,6 @@ fn main() {
         }
     });
 
-    let dp_rx = provider_chan.1;
     let term = Arc::clone(&terminal);
     let state = Arc::clone(&app_state);
 
@@ -156,12 +157,11 @@ fn main() {
 
     let term = Arc::clone(&terminal);
     let state = Arc::clone(&app_state);
+    let dp_rx = provider_chan.1.clone();
     loop {
         chan_select! {
             default => {
-                let mut terminal = term.lock().unwrap();
-                let mut app_state = state.lock().unwrap();
-                draw(&mut terminal, &mut app_state);
+                thread::sleep_ms(10);
             },
             rx.recv() => {
                 break;
@@ -174,7 +174,7 @@ fn main() {
                 });
                 draw(&mut terminal, &mut app_state);
             },
-        }
+        };
     }
     let term = Arc::clone(&terminal);
     let mut t = term.lock().unwrap();
