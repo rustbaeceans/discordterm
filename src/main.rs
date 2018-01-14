@@ -26,7 +26,7 @@ use tui::layout::{Group, Size, Direction};
 use tui::style::{Color, Style};
 
 mod discord_provider;
-use discord_provider::{DiscordProvider, Msg, MsgToDiscord};
+use discord_provider::{DiscordProvider, MsgToDiscord, MsgFromDiscord};
 
 struct MockMessage {
     username: String,
@@ -70,13 +70,16 @@ fn main() {
 
     let backend = RawBackend::new().unwrap();
 
-    let provider_chan = chan::async();
-    let provider = DiscordProvider::init(read_token(), provider_chan.clone());
+    let channel_to_discord = chan::async();
+    let channel_from_discord = chan::async();
+    // give provider the from_discord sender and the to_discord receiver
+    let provider = DiscordProvider::init(read_token(), (channel_from_discord.0.clone(),
+        channel_to_discord.1.clone()));
     thread::spawn(move || {
         provider.outgoing_loop();
     });
-    for i in 1..5 {
-        provider_chan.0.send(Msg::ToDiscord(MsgToDiscord::Echo(String::from("Test!"))));
+    for i in 1..6 {
+        channel_to_discord.0.send(MsgToDiscord::Echo(String::from(format!("Test #{}", i))));
     }
     let example_message = MockMessage {
         username: String::from("Namtsua"),
@@ -157,7 +160,7 @@ fn main() {
 
     let term = Arc::clone(&terminal);
     let state = Arc::clone(&app_state);
-    let dp_rx = provider_chan.1.clone();
+    let rx_from_pvdr = channel_from_discord.1.clone();
     loop {
         chan_select! {
             default => {
@@ -166,11 +169,11 @@ fn main() {
             rx.recv() => {
                 break;
             },
-            dp_rx.recv() -> val => {
+            rx_from_pvdr.recv() -> val => {
                 let mut terminal = term.lock().unwrap();
                 let mut app_state = state.lock().unwrap();
                 app_state.messages.push(MockMessage{
-                     username:String::from("DiscordProvider"), content: String::from(format!("-> {:?}", val))
+                     username:String::from("DiscordProvider"), content: String::from(format!("{:?}", val))
                 });
                 draw(&mut terminal, &mut app_state);
             },
