@@ -382,7 +382,15 @@ fn draw_top(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
         .direction(Direction::Horizontal)
         .sizes(&[Size::Percent(20), Size::Min(0)])
         .render(t, area, |t, chunks| {
-            let msgs = state.messages.iter().map( |msg| {
+
+            let n = state.messages.len();
+            let nm = chunks[1].height as usize;
+            let left_bound: usize = match n.checked_sub(nm) {
+                Some(x) => x,
+                None => 0,
+            };
+
+            let msgs = state.messages[left_bound..n].iter().map( |msg| {
                 Item::StyledData(
                     format!("{}: {}", &msg.username[..], &msg.content[..]),
                     &style,
@@ -390,6 +398,7 @@ fn draw_top(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
             });
 
             draw_left(t, state, &chunks[0]);
+
 
             List::new(msgs)
                 .block(Block::default().borders(Borders::ALL).title(&format!("#{}", channel_name)[..]))
