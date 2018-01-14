@@ -6,14 +6,11 @@ use thread;
 //#[derive(Debug)]
 pub struct DiscordProvider {
     discord: Option<Discord>,
-    tx: Sender<Msg>,
-    rx: Receiver<Msg>
+    tx: Sender<MsgFromDiscord>,
+    rx: Receiver<MsgToDiscord>
 
 }
-#[derive(Debug)]
-pub enum Msg {
-    ToDiscord(MsgToDiscord), FromDiscord(MsgFromDiscord)
-}
+
 #[derive(Debug)]
 pub enum MsgFromDiscord {
     ChatMsg(Message),
@@ -26,7 +23,7 @@ pub enum MsgToDiscord {
     Echo(String)
 }
 impl DiscordProvider {
-    pub fn init(user_token: String, channel: (Sender<Msg>, Receiver<Msg>)) -> Self {
+    pub fn init(user_token: String, channel: (Sender<MsgFromDiscord>, Receiver<MsgToDiscord>)) -> Self {
         DiscordProvider {
             discord: match Discord::from_user_token(&user_token){
                 Ok(x) => Some(x),
@@ -38,20 +35,16 @@ impl DiscordProvider {
     }
     pub fn outgoing_loop(self) {
         loop {
-           if let Msg::ToDiscord(x) = self.rx.recv().unwrap() {
-                println!("Received message: {:?}", x);
-                match x {
-                    MsgToDiscord::RequestServerInfo => {
+            let x = self.rx.recv().unwrap();
+            match x {
+                MsgToDiscord::RequestServerInfo => {
 
-                    },
-                    MsgToDiscord::Echo(s) => {
-                        println!("Sending response");
-                        self.tx.send(Msg::FromDiscord(MsgFromDiscord::EchoResponse(s)));
-                        println!("Sent response");
-                    }
-                } 
-           }
-           thread::sleep_ms(500); // AAAAAAAAAAAAAAAAAAAUGH
+                },
+                MsgToDiscord::Echo(s) => {
+                    self.tx.send(MsgFromDiscord::EchoResponse(s));
+                }
+            }
+           thread::sleep_ms(50); // AAAAAAAAAAAAAAAAAAAUGH
         }
     }
 }
