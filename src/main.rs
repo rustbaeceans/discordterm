@@ -21,9 +21,9 @@ use termion::input::TermRead;
 
 use tui::Terminal;
 use tui::backend::RawBackend;
-use tui::widgets::{Widget, Block, Borders, Item, List, Paragraph};
-use tui::layout::{Group, Size, Direction};
-use tui::style::{Color, Style};
+use tui::widgets::{Widget, Block, Borders, Item, List, SelectableList, Paragraph};
+use tui::layout::{Group, Size, Rect, Direction};
+use tui::style::{Color, Modifier, Style};
 
 mod discord_provider;
 use discord_provider::{DiscordProvider, Msg, MsgToDiscord};
@@ -36,6 +36,10 @@ struct MockMessage {
 struct AppState {
     messages: Vec<MockMessage>,
     content: String,
+    channels: Vec<String>,
+    selected_channel: usize,
+    servers: Vec<String>,
+    selected_server: usize,
 }
 
 impl AppState {
@@ -90,7 +94,11 @@ fn main() {
     let mut app_state = AppState {
         messages: vec!(example_message, example_message2),
         content: String::from(""),
-    };
+        channels: vec![String::from("general"), String::from("baes-only")], // TODO: Add real channels
+        selected_channel: 0,
+        servers: vec![String::from("Server 1"), String::from("Server 2")], // TODO: Add real servers
+        selected_server: 0,
+   };
 
     let terminal = Arc::new(Mutex::new(terminal));
     let app_state = Arc::new(Mutex::new(app_state));
@@ -125,6 +133,19 @@ fn main() {
                 },
                 event::Key::Backspace => {
                     app_state.remove_character();
+                },
+                event::Key::Down => {
+                    app_state.selected_channel += 1;
+                    if app_state.selected_channel > app_state.channels.len() - 1 {
+                        app_state.selected_channel = 0;
+                    }
+                },
+                event::Key::Up => {
+                    if app_state.selected_channel > 0 {
+                        app_state.selected_channel -= 1;
+                    } else {
+                        app_state.selected_channel = app_state.channels.len() - 1;
+                    }
                 },
                 event::Key::Ctrl('c') => {
                     tx.send(true);
@@ -182,18 +203,34 @@ fn main() {
     t.clear().unwrap();
 }
 
-fn draw(t: &mut Terminal<RawBackend>, state: &mut AppState) {
+fn draw(t: &mut Terminal<RawBackend>, state: &AppState) {
     let size = t.size().unwrap();
-    let state = &*state;
-    let style = Style::default().fg(Color::Yellow);
-
-    let state = &*state;
-
+    let channel_name = &state.channels[state.selected_channel];
 
     Group::default()
         .direction(Direction::Vertical)
         .sizes(&[Size::Min(0), Size::Fixed(3)])
         .render(t, &size, |t, chunks| {
+
+            draw_top(t, state, &chunks[0]);
+
+            Paragraph::default()
+                .text(&state.content[..])
+                .block(Block::default().borders(Borders::ALL).title("Message #channel")) // &format!("Message #{}", channel_name) <-- TODO: Figure out why this makes it slower
+                .render(t, &chunks[1]);
+        });
+
+    t.draw();
+}
+
+fn draw_top(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
+    let style = Style::default().fg(Color::Yellow);
+    let channel_name = &state.channels[state.selected_channel];
+
+    Group::default()
+        .direction(Direction::Horizontal)
+        .sizes(&[Size::Percent(20), Size::Min(0)])
+        .render(t, area, |t, chunks| {
             let msgs = state.messages.iter().map( |msg| {
                 Item::StyledData(
                     format!("{}: {}", &msg.username[..], &msg.content[..]),
@@ -201,15 +238,33 @@ fn draw(t: &mut Terminal<RawBackend>, state: &mut AppState) {
                 )
             });
 
-            List::new(msgs)
-                .block(Block::default().borders(Borders::ALL).title("Discord"))
-                .render(t, &chunks[0]);
+            draw_left(t, state, &chunks[0]);
 
-            Paragraph::default()
-                .text(&state.content[..])
-                .block(Block::default().borders(Borders::ALL).title("Terminal"))
+            List::new(msgs)
+                .block(Block::default().borders(Borders::ALL).title("#channel")) // &format!("#{}", channel_name) <-- TODO: Figure out why this makes it slower
                 .render(t, &chunks[1]);
         });
+}
 
-    t.draw();
+fn draw_left(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
+    Group::default()
+        .direction(Direction::Vertical)
+        .sizes(&[Size::Percent(50), Size::Percent(50)])
+        .render(t, area, |t, chunks| {
+            SelectableList::default()
+                .block(Block::default().borders(Borders::ALL).title("Servers"))
+                .items(&state.servers)
+                .select(state.selected_server)
+                .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::Bold))
+                .highlight_symbol(">")
+                .render(t, &chunks[0]);
+
+            SelectableList::default()
+                .block(Block::default().borders(Borders::ALL).title("Channels"))
+                .items(&state.channels)
+                .select(state.selected_channel)
+                .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::Bold))
+                .highlight_symbol(">")
+                .render(t, &chunks[1]);
+        });
 }
