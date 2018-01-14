@@ -2,42 +2,48 @@ use discord::Discord;
 use discord::model::{Message};
 use chan::{Sender,Receiver};
 
-type TX = Sender<MsgFromDiscord>;
-type RX = Receiver<MsgToDiscord>;
 //#[derive(Debug)]
-struct DiscordProvider {
+pub struct DiscordProvider {
     discord: Discord,
-    tx: TX,
-    rx: RX
+    tx: Sender<Msg>,
+    rx: Receiver<Msg>
 
 }
-enum MsgFromDiscord {
+#[derive(Debug)]
+pub enum Msg {
+    ToDiscord(MsgToDiscord), FromDiscord(MsgFromDiscord)
+}
+#[derive(Debug)]
+pub enum MsgFromDiscord {
     ChatMsg(Message),
     ServerInfo(String),
     EchoResponse(String)
 }
-enum MsgToDiscord {
+#[derive(Debug)]
+pub enum MsgToDiscord {
     RequestServerInfo,
     Echo(String)
 }
 impl DiscordProvider {
-    fn init(self, user_token: String, channel: (TX, RX)) -> Self {
+    pub fn init(user_token: String, channel: (Sender<Msg>, Receiver<Msg>)) -> Self {
         DiscordProvider {
             discord: Discord::from_user_token(&user_token).expect("Unable to login"),
             tx: channel.0,
             rx: channel.1
         }
     }
-    fn loop(self) {
+    pub fn outgoing_loop(self) {
         loop {
-           match self.rx.recv().unwrap() {
-               RequestServerInfo => {
+           if let Msg::ToDiscord(x) = self.rx.recv().unwrap() {
+                match x {
+                    RequestServerInfo => {
 
-               },
-               Echo(s) => {
-                   self.tx.send(EchoResponse(s));
-               }
-           } 
+                    },
+                    MsgToDiscord::Echo(s) => {
+                        self.tx.send(Msg::FromDiscord(MsgFromDiscord::EchoResponse(s)));
+                    }
+                } 
+           }
         }
     }
 }

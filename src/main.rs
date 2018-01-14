@@ -9,6 +9,8 @@ use std::sync::{Arc, Mutex};
 
 use std::io;
 use std::vec::Vec;
+use std::fs::File;
+use std::io::Read;
 
 use discord::model::Message;
 
@@ -23,20 +25,33 @@ use tui::layout::{Group, Size, Direction};
 use tui::style::{Color, Style};
 
 mod discord_provider;
-
+use discord_provider::{DiscordProvider, Msg, MsgToDiscord};
 struct MockMessage<'a> {
     username: &'a str,
     content: &'a str,
-}
+} 
 
 struct AppState<'a> {
     messages: Vec<MockMessage<'a>>,
+}
+
+fn read_token() -> String {
+  let mut data = String::new();
+    let mut f = File::open("./token").expect("Unable to open file");
+    f.read_to_string(&mut data).expect("Unable to read string");
+    data
 }
 
 fn main() {
 
     let backend = RawBackend::new().unwrap();
 
+    let provider_chan = chan::async();
+    let provider = DiscordProvider::init(read_token(), provider_chan.clone());
+    thread::spawn(move || {
+        provider.outgoing_loop();
+    });
+    provider_chan.0.send(Msg::ToDiscord(MsgToDiscord::Echo(String::from("Test!"))));
     let example_message = MockMessage {
         username: "Namtsua",
         content: "I love fidget spinners",
@@ -81,12 +96,18 @@ fn main() {
         }
     });
 
+    let dp_rx = provider_chan.1;
     loop {
         chan_select! {
             default => {},
             rx.recv() => {
                 break;
-            }
+            },
+            dp_rx.recv() -> val => {
+                 state.lock().unwrap().messages.push(MockMessage{
+                     username:"DiscordProvider", content: String::from(format!("{:?}", val))
+                     });
+            },
         }
     }
     let term = Arc::clone(&terminal);
