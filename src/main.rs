@@ -214,6 +214,7 @@ fn main() {
             app_state.messages.push(MockMessage{
                  username:String::from("test"), content: String::from("hey")
             });
+            draw(&mut terminal, &mut app_state);
         }
     });
 
@@ -282,7 +283,7 @@ fn draw_top(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
             draw_left(t, state, &chunks[0]);
 
             List::new(msgs)
-                .block(Block::default().borders(Borders::ALL).title("#channel")) // &format!("#{}", channel_name) <-- TODO: Figure out why this makes it slower
+                .block(Block::default().borders(Borders::ALL).title(&format!("#{}", channel_name)[..])) //  <-- TODO: Figure out why this makes it slower
                 .render(t, &chunks[1]);
         });
 }
