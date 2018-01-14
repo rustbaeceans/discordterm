@@ -47,7 +47,11 @@ impl AppState {
 
 fn read_token() -> String {
   let mut data = String::new();
-    let mut f = File::open("./token").expect("Unable to open file");
+    let mut f = match File::open("./token") {
+        Ok(x) => x,
+        Err(x) => {println!("Couldn't log in."); return String::from("0");}
+    };
+    
     f.read_to_string(&mut data).expect("Unable to read string");
     data
 }
@@ -116,16 +120,21 @@ fn main() {
     });
 
     let dp_rx = provider_chan.1;
+    let state = Arc::clone(&app_state);
     loop {
+        let mut app_state = state.lock().unwrap();
+app_state.messages.push(MockMessage{
+                     username:String::from("test"), content: String::from("hey")
+                });
         chan_select! {
             default => {},
             rx.recv() => {
                 break;
             },
             dp_rx.recv() -> val => {
-                 state.lock().unwrap().messages.push(MockMessage{
-                     username:"DiscordProvider", content: String::from(format!("{:?}", val))
-                     });
+                app_state.messages.push(MockMessage{
+                     username:String::from("DiscordProvider"), content: String::from(format!("-> {:?}", val))
+                });
             },
         }
     }

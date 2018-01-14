@@ -4,7 +4,7 @@ use chan::{Sender,Receiver};
 
 //#[derive(Debug)]
 pub struct DiscordProvider {
-    discord: Discord,
+    discord: Option<Discord>,
     tx: Sender<Msg>,
     rx: Receiver<Msg>
 
@@ -27,7 +27,10 @@ pub enum MsgToDiscord {
 impl DiscordProvider {
     pub fn init(user_token: String, channel: (Sender<Msg>, Receiver<Msg>)) -> Self {
         DiscordProvider {
-            discord: Discord::from_user_token(&user_token).expect("Unable to login"),
+            discord: match Discord::from_user_token(&user_token){
+                Ok(x) => Some(x),
+                Err(x) => { println!("Couldn't log in! {:?}",x); None }
+            },
             tx: channel.0,
             rx: channel.1
         }
