@@ -12,6 +12,7 @@ use std::vec::Vec;
 use std::fs::File;
 use std::io::Read;
 use std::time;
+use std::cmp::{max, min};
 
 use discord::model::Message;
 
@@ -77,17 +78,26 @@ impl AppState {
         content_to_append.push(chr);
         let end = self.content.len();
         self.content = format!("{}{}{}", &self.content[0..self.offset], content_to_append, &self.content[self.offset..end]);
-        self.offset += 1;
+        self.offset = min(self.content.len(), self.offset + 1);
     }
     fn remove_character(&mut self) {
         let n = self.content.len();
+
+        let left_bound = match self.offset.checked_sub(1) {
+            Some(x) => x,
+            None => 0,
+        };
+
+        let right_bound = min(n, self.offset + 1);
+
         if (n != 0) {
-            self.content = format!("{}{}", &self.content[..self.offset-1], &self.content[self.offset..n]);
-            self.offset -= 1;
+            self.content = format!("{}{}", &self.content[..left_bound], &self.content[self.offset..n]);
+            self.offset = left_bound;
         }
     }
     fn send_message(&mut self) {
         self.content = String::from("");
+        self.offset = 0;
     }
 }
 
@@ -275,6 +285,15 @@ fn main() {
                         },
                     }
                 },
+                event::Key::Left => {
+                    app_state.offset = match app_state.offset.checked_sub(1) {
+                        Some(x) => x,
+                        None => 0,
+                    };
+                },
+                event::Key::Right => {
+                    app_state.offset = min(app_state.content.len(), app_state.offset + 1);
+                }
                 event::Key::Ctrl('c') => {
                     tx.send(true);
                     break;
