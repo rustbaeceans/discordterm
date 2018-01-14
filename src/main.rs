@@ -123,7 +123,6 @@ fn main() {
                 event::Key::Char(chr) => {
                     app_state.add_character(chr);
                     terminal.show_cursor().unwrap();
-
                 },
                 event::Key::Backspace => {
                     app_state.remove_character();
