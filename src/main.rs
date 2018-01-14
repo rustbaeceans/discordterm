@@ -35,14 +35,19 @@ fn main() {
 
     let backend = RawBackend::new().unwrap();
 
-    let example_message =  MockMessage {
+    let example_message = MockMessage {
         username: "Namtsua",
         content: "I love fidget spinners",
     };
 
+    let example_message2 = MockMessage {
+        username: "harbo",
+        content: "Let's relax",
+    };
+
     let mut terminal = Terminal::new(backend).unwrap();
     let mut app_state = AppState {
-        messages: vec!(example_message),
+        messages: vec!(example_message, example_message2),
     };
 
     let terminal = Arc::new(Mutex::new(terminal));
