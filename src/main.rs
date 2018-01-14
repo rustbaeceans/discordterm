@@ -108,6 +108,7 @@ impl AppState {
         }
     }
     fn send_message(&mut self) {
+        self.to_provider.send(MsgToDiscord::Echo(self.content.clone()));
         self.content = String::from("");
         self.offset = 0;
     }
@@ -125,18 +126,39 @@ impl AppState {
     fn active_server(&mut self) -> &mut Server {
         &mut self.servers[self.active_server]
     }
+    fn get_servers(&self) {
+        self.to_provider.send(MsgToDiscord::GetServers);
+    }
+    fn set_servers(&mut self, servers: Vec<discord::model::ServerInfo>) {
+        self.servers.clear();
+        for server_info in servers.iter() {
+            self.servers.push(Server{
+                channels: Vec::new(),
+                active_channel: 0,
+                server_info: server_info.clone(),
+            });
+        };
+    }
 }
 
 impl Server {
     fn next_channel(&mut self) {
-        let new_index = (self.active_channel + 1) % self.channels.len();
-        self.active_channel = new_index;
+        if self.channels.len() == 0 {
+            self.active_channel = 0;
+        } else {
+           let new_index = (self.active_channel + 1) % self.channels.len();
+            self.active_channel = new_index; 
+        }
     }
     fn prev_channel(&mut self) {
         if self.active_channel > 0 {
             self.active_channel -= 1;
         } else {
-            self.active_channel = self.channels.len() - 1;
+            if (self.channels.len() == 0) {
+                self.active_channel = 0;
+            } else {
+                self.active_channel = self.channels.len() - 1;
+            }
         }
     }
     fn active_channel(&mut self) -> &mut Channel {
@@ -189,7 +211,7 @@ fn main() {
         to_provider: channel_to_discord.0.clone(),
         from_provider: channel_from_discord.1.clone(),
     };
-
+    app_state.get_servers();
     let test_channel1 = Channel {
         name: String::from("Test Channel S1 - 1"),
         id: discord::model::ChannelId {
@@ -327,23 +349,6 @@ fn main() {
 
     let term = Arc::clone(&terminal);
     let state = Arc::clone(&app_state);
-
-    let term = Arc::clone(&terminal);
-    let state = Arc::clone(&app_state);
-    thread::spawn(move || loop {
-        thread::sleep(time::Duration::from_secs(1));
-        let mut terminal = term.lock().unwrap();
-        let mut app_state = state.lock().unwrap();
-
-        app_state.messages.push(MockMessage {
-            username: String::from("test"),
-            content: String::from("hey"),
-        });
-        draw(&mut terminal, &mut app_state);
-    });
-
-    let term = Arc::clone(&terminal);
-    let state = Arc::clone(&app_state);
     let rx_from_pvdr = channel_from_discord.1.clone();
     loop {
         chan_select! {
@@ -358,15 +363,24 @@ fn main() {
                 let mut app_state = state.lock().unwrap();
 
                 if let Some(message) = val {
-                    app_state.messages.push(MockMessage{
-                        username: String::from("DiscordProvider"),
-                        content: String::from(format!("{:?}", message)),
-                    });
+                    match message {
+                        MsgFromDiscord::Servers(servers) => {
+                            app_state.set_servers(servers);
+                        },
+                        _ => {
+                            app_state.messages.push(MockMessage{
+                                username: String::from("DiscordProvider"),
+                                content: String::from(format!("{:?}", message)),
+                            })
+                        }
+                    }
                 }
+
                 draw(&mut terminal, &mut app_state);
             },
         };
     }
+
     let term = Arc::clone(&terminal);
     let mut t = term.lock().unwrap();
     t.show_cursor().unwrap();

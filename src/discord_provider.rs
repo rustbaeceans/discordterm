@@ -1,7 +1,6 @@
 use discord::Discord;
 use discord::Connection;
-use discord::model;
-use discord::model::{ChannelId, Message, Event};
+use discord::model::*;
 use chan::{Sender, Receiver};
 use chan;
 use thread;
@@ -15,12 +14,15 @@ pub struct DiscordProvider {
 
 #[derive(Debug)]
 pub enum MsgFromDiscord {
+    Servers(Vec<ServerInfo>),
     ChatMsg(Message),
     EchoResponse(String)
 }
 
 #[derive(Debug)]
 pub enum MsgToDiscord {
+    GetServers,
+    GetChannels(ServerId),
     SendMessage(ChannelId, String),
     Echo(String), // Testing echo back what we got
 }
@@ -85,12 +87,22 @@ fn handle_messages(
             ui_reciever.recv() -> val => {
                 let message = val.unwrap();
                 match message {
+                    MsgToDiscord::GetServers => {
+                        let s = discord.get_servers();
+                        if let Ok(servers) = s {
+                            ui_sender.send(MsgFromDiscord::Servers(servers));
+                        }
+                    },
+                    MsgToDiscord::GetChannels(server_id) => {
+
+                    }
                     MsgToDiscord::SendMessage(channel, content) => {
                         discord.send_message(channel, &content, "", false);
                     },
                     MsgToDiscord::Echo(message) => {
                         ui_sender.send(MsgFromDiscord::EchoResponse(message));
-                    }
+                    },
+                    _ => (),
                 }
             },
             discord_reciever.recv() -> val => {
