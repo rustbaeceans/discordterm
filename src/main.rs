@@ -43,6 +43,12 @@ impl AppState {
         content_to_append.push(chr);
         self.content = format!("{}{}", self.content, content_to_append);
     }
+    fn remove_character(&mut self) {
+        let n = self.content.chars().count();
+        if (n != 0) {
+            self.content = String::from(&self.content[..n-1]);
+        }
+    }
 }
 
 fn read_token() -> String {
@@ -104,6 +110,11 @@ fn main() {
             match evt {
                 event::Key::Char(chr) => {
                     app_state.add_character(chr);
+                    terminal.show_cursor().unwrap();
+
+                },
+                event::Key::Backspace => {
+                    app_state.remove_character();
                 },
                 event::Key::Ctrl('c') => {
                     tx.send(true);
