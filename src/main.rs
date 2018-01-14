@@ -70,7 +70,7 @@ struct Channel {
 }
 
 impl Channel {
-    fn send_message(&self, discord_chan: chan::Sender<MsgToDiscord>, content: String) {
+    fn send_message(&self, discord_chan: &chan::Sender<MsgToDiscord>, content: String) {
         let message = MsgToDiscord::SendMessage(
             self.id,
             content,
@@ -109,7 +109,12 @@ impl AppState {
         }
     }
     fn send_message(&mut self) {
-        self.to_provider.send(MsgToDiscord::Echo(self.content.clone()));
+        // self.to_provider.send(MsgToDiscord::Echo(self.content.clone()));
+        let provider = &self.to_provider;
+        let text = self.content.clone();
+        let active_server = &self.servers[self.active_server];
+        let active_channel = &active_server.channels[active_server.active_channel];
+        active_channel.send_message(provider, text);
         self.content = String::from("");
         self.offset = 0;
     }
@@ -132,7 +137,10 @@ impl AppState {
     }
     fn set_servers(&mut self, servers: Vec<discord::model::ServerInfo>) {
         self.servers.clear();
-        for server_info in servers.iter() {
+
+        let mut mut_servers = servers.to_vec();
+        mut_servers.reverse();
+        for server_info in mut_servers.iter() {
             self.servers.push(Server{
                 channels: Vec::new(),
                 active_channel: 0,
