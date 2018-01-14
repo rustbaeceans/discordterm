@@ -33,6 +33,11 @@ struct MockMessage {
     content: String,
 }
 
+enum TabSelect {
+    Channels,
+    Servers,
+}
+
 struct AppState {
     messages: Vec<MockMessage>,
     content: String,
@@ -40,6 +45,7 @@ struct AppState {
     selected_channel: usize,
     servers: Vec<String>,
     selected_server: usize,
+    selected_tab: TabSelect,
 }
 
 impl AppState {
@@ -100,6 +106,7 @@ fn main() {
         selected_channel: 0,
         servers: vec![String::from("Server 1"), String::from("Server 2")], // TODO: Add real servers
         selected_server: 0,
+        selected_tab: TabSelect::Channels,
    };
 
     let terminal = Arc::new(Mutex::new(terminal));
@@ -129,6 +136,12 @@ fn main() {
                 event::Key::Char('\n') => {
                     app_state.send_message();
                 },
+                event::Key::Char('\t') => {
+                    app_state.selected_tab = match app_state.selected_tab {
+                        TabSelect::Servers => TabSelect::Channels,
+                        TabSelect::Channels => TabSelect::Servers,
+                    }
+                },
                 event::Key::Char(chr) => {
                     app_state.add_character(chr);
                     terminal.show_cursor().unwrap();
@@ -137,17 +150,42 @@ fn main() {
                     app_state.remove_character();
                 },
                 event::Key::Down => {
-                    app_state.selected_channel += 1;
-                    if app_state.selected_channel > app_state.channels.len() - 1 {
-                        app_state.selected_channel = 0;
-                    }
+                    match app_state.selected_tab {
+                        TabSelect::Servers => {
+                            app_state.selected_server += 1;
+                            if app_state.selected_server > app_state.servers.len() - 1 {
+                                app_state.selected_server = 0;
+                            }
+                        }
+                        TabSelect::Channels => {
+                            app_state.selected_channel += 1;
+                            if app_state.selected_channel > app_state.channels.len() - 1 {
+                                app_state.selected_channel = 0;
+                            }
+                        }
+                        _ => {}
+                    };
+                    
                 },
                 event::Key::Up => {
-                    if app_state.selected_channel > 0 {
-                        app_state.selected_channel -= 1;
-                    } else {
-                        app_state.selected_channel = app_state.channels.len() - 1;
-                    }
+                    match app_state.selected_tab {
+                        TabSelect::Servers => {
+                            if app_state.selected_server > 0 {
+                                app_state.selected_server -= 1;
+                            } else {
+                                app_state.selected_server = app_state.servers.len() - 1;
+                            }
+                        }
+                        TabSelect::Channels => {
+                            if app_state.selected_channel > 0 {
+                                app_state.selected_channel -= 1;
+                            } else {
+                                app_state.selected_channel = app_state.channels.len() - 1;
+                            }
+                        }
+                        _ => {}
+                    };
+                    
                 },
                 event::Key::Ctrl('c') => {
                     tx.send(true);
