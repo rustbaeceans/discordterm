@@ -11,6 +11,7 @@ use std::io;
 use std::vec::Vec;
 use std::fs::File;
 use std::io::Read;
+use std::time;
 
 use discord::model::Message;
 
@@ -136,21 +137,42 @@ fn main() {
     });
 
     let dp_rx = provider_chan.1;
+    let term = Arc::clone(&terminal);
+    let state = Arc::clone(&app_state);
+
+    let term = Arc::clone(&terminal);
+    let state = Arc::clone(&app_state);
+    thread::spawn(move || {
+        loop {
+            thread::sleep(time::Duration::from_secs(1));
+            let mut terminal = term.lock().unwrap();
+            let mut app_state = state.lock().unwrap();
+
+            app_state.messages.push(MockMessage{
+                 username:String::from("test"), content: String::from("hey")
+            });
+        }
+    });
+
+    let term = Arc::clone(&terminal);
     let state = Arc::clone(&app_state);
     loop {
-        let mut app_state = state.lock().unwrap();
-app_state.messages.push(MockMessage{
-                     username:String::from("test"), content: String::from("hey")
-                });
         chan_select! {
-            default => {},
+            default => {
+                let mut terminal = term.lock().unwrap();
+                let mut app_state = state.lock().unwrap();
+                draw(&mut terminal, &mut app_state);
+            },
             rx.recv() => {
                 break;
             },
             dp_rx.recv() -> val => {
+                let mut terminal = term.lock().unwrap();
+                let mut app_state = state.lock().unwrap();
                 app_state.messages.push(MockMessage{
                      username:String::from("DiscordProvider"), content: String::from(format!("-> {:?}", val))
                 });
+                draw(&mut terminal, &mut app_state);
             },
         }
     }
@@ -158,7 +180,6 @@ app_state.messages.push(MockMessage{
     let mut t = term.lock().unwrap();
     t.show_cursor().unwrap();
     t.clear().unwrap();
-
 }
 
 fn draw(t: &mut Terminal<RawBackend>, state: &mut AppState) {
