@@ -15,6 +15,7 @@ pub struct DiscordProvider {
 #[derive(Debug)]
 pub enum MsgFromDiscord {
     Servers(Vec<ServerInfo>),
+    Channels(ServerId, Vec<PublicChannel>),
     ChatMsg(Message),
     EchoResponse(String)
 }
@@ -94,7 +95,10 @@ fn handle_messages(
                         }
                     },
                     MsgToDiscord::GetChannels(server_id) => {
-
+                        let c = discord.get_server_channels(server_id);
+                        if let Ok(channels) = c {
+                            ui_sender.send(MsgFromDiscord::Channels(server_id, channels));
+                        }
                     }
                     MsgToDiscord::SendMessage(channel, content) => {
                         discord.send_message(channel, &content, "", false);

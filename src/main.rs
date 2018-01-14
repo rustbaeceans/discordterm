@@ -50,6 +50,7 @@ struct AppState {
     from_provider: chan::Receiver<MsgFromDiscord>,
 }
 
+#[derive(Clone)]
 struct Server {
     channels: Vec<Channel>,
     active_channel: usize,
@@ -61,7 +62,7 @@ impl AsRef<str> for Server {
        &self.server_info.name
     }
 }
-
+#[derive(Clone)]
 struct Channel {
     name: String,
     id: discord::model::ChannelId,
@@ -137,7 +138,23 @@ impl AppState {
                 active_channel: 0,
                 server_info: server_info.clone(),
             });
+            self.to_provider.send(MsgToDiscord::GetChannels(server_info.id));
         };
+    }
+    fn set_channels(&mut self, owner: discord::model::ServerId, channels: Vec<discord::model::PublicChannel>) {
+        let temp = self.servers.clone();     
+        let (i, owning_server) = temp.iter().enumerate().find(|&(i, server)| {
+            server.server_info.id == owner
+        }).unwrap();
+
+        self.servers[i].channels = channels.iter().map(|d_channel| {
+            let d_channel = d_channel.clone();
+            Channel {
+                name: d_channel.name,
+                id: d_channel.id,
+                messages: vec!(),
+            }
+        }).collect();
     }
 }
 
@@ -366,6 +383,9 @@ fn main() {
                     match message {
                         MsgFromDiscord::Servers(servers) => {
                             app_state.set_servers(servers);
+                        },
+                        MsgFromDiscord::Channels(server_id, channels) => {
+                            app_state.set_channels(server_id, channels)
                         },
                         _ => {
                             app_state.messages.push(MockMessage{
