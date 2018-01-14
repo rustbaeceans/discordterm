@@ -15,6 +15,8 @@ use std::time;
 use std::cmp::{max, min};
 
 use discord::model::Message;
+use discord::State;
+use discord::model::OnlineStatus;
 
 use termion::event;
 use termion::event::Key;
@@ -37,6 +39,7 @@ struct MockMessage {
 enum TabSelect {
     Channels,
     Servers,
+    //Friends,
 }
 
 struct AppState {
@@ -45,9 +48,23 @@ struct AppState {
     offset: usize,
     servers: Vec<Server>,
     active_server: usize,
+    friends: Vec<Friend>,
     selected_tab: TabSelect,
     to_provider: chan::Sender<MsgToDiscord>,
     from_provider: chan::Receiver<MsgFromDiscord>,
+}
+
+#[derive(Clone)]
+struct Friend {
+    id: discord::model::UserId,
+    name: String,
+    status: OnlineStatus,
+}
+
+impl AsRef<str> for Friend {
+    fn as_ref(&self) -> &str {
+       &self.name
+    }
 }
 
 #[derive(Clone)]
@@ -156,6 +173,19 @@ impl AppState {
             }
         }).collect();
     }
+    fn get_friends(&mut self) {
+        self.to_provider.send(MsgToDiscord::GetFriends);
+    }
+    fn set_friends(&mut self, friends: Vec<discord::model::Presence>) {
+        self.friends = friends.iter().map(|d_friend| {
+            let d_friend = d_friend.clone();
+            Friend {
+                id: d_friend.user_id,
+                name: d_friend.user.unwrap().name,
+                status: d_friend.status,
+            }
+        }).collect();
+    }
 }
 
 impl Server {
@@ -224,6 +254,7 @@ fn main() {
         offset: 0,
         active_server: 0,
         servers: vec![],
+        friends: vec![],
         selected_tab: TabSelect::Channels,
         to_provider: channel_to_discord.0.clone(),
         from_provider: channel_from_discord.1.clone(),
@@ -290,9 +321,9 @@ fn main() {
         },
     };
 
-
     app_state.servers.push(test_server1);
     app_state.servers.push(test_server2);
+    app_state.get_friends();
     let terminal = Arc::new(Mutex::new(terminal));
     let app_state = Arc::new(Mutex::new(app_state));
 
@@ -367,6 +398,7 @@ fn main() {
     let term = Arc::clone(&terminal);
     let state = Arc::clone(&app_state);
     let rx_from_pvdr = channel_from_discord.1.clone();
+    //let mut state = State::new(ready);
     loop {
         chan_select! {
             default => {
@@ -385,7 +417,10 @@ fn main() {
                             app_state.set_servers(servers);
                         },
                         MsgFromDiscord::Channels(server_id, channels) => {
-                            app_state.set_channels(server_id, channels)
+                            app_state.set_channels(server_id, channels);
+                        },
+                        MsgFromDiscord::Friends(friends) => {
+                            app_state.set_friends(friends);
                         },
                         _ => {
                             app_state.messages.push(MockMessage{
@@ -462,9 +497,13 @@ fn draw_top(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
 fn draw_left(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
     Group::default()
         .direction(Direction::Vertical)
-        .sizes(&[Size::Percent(50), Size::Percent(50)])
+        .sizes(&[Size::Percent(20), Size::Percent(40), Size::Min(0)])
         .render(t, area, |t, chunks| {
 
+            SelectableList::default()
+                .block(Block::default().borders(Borders::ALL).title("Friends"))
+                .items(&state.friends)
+                .render(t, &chunks[0]);
 
             SelectableList::default()
                 .block(Block::default().borders(Borders::ALL).title("Servers"))
@@ -472,7 +511,7 @@ fn draw_left(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
                 .select(state.active_server)
                 .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::Bold))
                 .highlight_symbol(">")
-                .render(t, &chunks[0]);
+                .render(t, &chunks[1]);
 
             SelectableList::default()
                 .block(Block::default().borders(Borders::ALL).title("Channels"))
@@ -480,7 +519,7 @@ fn draw_left(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
                 .select(state.servers[state.active_server].active_channel)
                 .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::Bold))
                 .highlight_symbol(">")
-                .render(t, &chunks[1]);
+                .render(t, &chunks[2]);
 
         });
 }

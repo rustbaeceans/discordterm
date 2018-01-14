@@ -1,6 +1,7 @@
 use discord::Discord;
 use discord::Connection;
 use discord::model::*;
+use discord::State;
 use chan::{Sender, Receiver};
 use chan;
 use thread;
@@ -17,7 +18,8 @@ pub enum MsgFromDiscord {
     Servers(Vec<ServerInfo>),
     Channels(ServerId, Vec<PublicChannel>),
     ChatMsg(Message),
-    EchoResponse(String)
+    EchoResponse(String),
+    Friends(Vec<Presence>),
 }
 
 #[derive(Debug)]
@@ -26,6 +28,7 @@ pub enum MsgToDiscord {
     GetChannels(ServerId),
     SendMessage(ChannelId, String),
     Echo(String), // Testing echo back what we got
+    GetFriends,
 }
 
 impl DiscordProvider {
@@ -49,15 +52,14 @@ impl DiscordProvider {
     pub fn start_provider(self) {
         let discord_client = self.discord
             .expect("Login to discord first!");
-        let mut connection = discord_client
+        let (mut connection, ready) = discord_client
             .connect()
-            .expect("Failed to initialize websocket connection")
-            .0;
-
+            .expect("Failed to initialize websocket connection");
         let (sender, reciever) = chan::sync(0);
         thread::spawn(move || monitor_websocket(connection, sender));
-        
-        handle_messages(discord_client, self.tx, self.rx, reciever)
+
+        let mut state = State::new(ready);        
+        handle_messages(discord_client, state, self.tx, self.rx, reciever)
     }
 }
 
@@ -79,6 +81,7 @@ fn monitor_websocket(mut connection: Connection, discord_sender: Sender<Event>) 
 // Handle messages to and from the main module
 fn handle_messages(
     discord: Discord,
+    state: State,
     ui_sender: Sender<MsgFromDiscord>,
     ui_reciever: Receiver<MsgToDiscord>,
     discord_reciever: Receiver<Event>) {
@@ -105,6 +108,10 @@ fn handle_messages(
                     },
                     MsgToDiscord::Echo(message) => {
                         ui_sender.send(MsgFromDiscord::EchoResponse(message));
+                    },
+                    MsgToDiscord::GetFriends => {
+                        let friends = state.presences();
+                        ui_sender.send(MsgFromDiscord::Friends((*friends).to_vec()));
                     },
                     _ => (),
                 }
