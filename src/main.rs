@@ -20,9 +20,9 @@ use termion::input::TermRead;
 
 use tui::Terminal;
 use tui::backend::RawBackend;
-use tui::widgets::{Widget, Block, Borders, Item, List, Paragraph};
+use tui::widgets::{Widget, Block, Borders, Item, List, SelectableList, Paragraph};
 use tui::layout::{Group, Size, Direction};
-use tui::style::{Color, Style};
+use tui::style::{Color, Modifier, Style};
 
 mod discord_provider;
 use discord_provider::{DiscordProvider, Msg, MsgToDiscord};
@@ -35,6 +35,8 @@ struct MockMessage {
 struct AppState {
     messages: Vec<MockMessage>,
     content: String,
+    channels: Vec<String>,
+    selected_channel: usize,
 }
 
 impl AppState {
@@ -89,6 +91,8 @@ fn main() {
     let mut app_state = AppState {
         messages: vec!(example_message, example_message2),
         content: String::from(""),
+        channels: vec![String::from("Channel 1"), String::from("Channel 2")], // TODO: Add read channels
+        selected_channel: 0,
     };
 
     let terminal = Arc::new(Mutex::new(terminal));
@@ -124,6 +128,19 @@ fn main() {
                 },
                 event::Key::Backspace => {
                     app_state.remove_character();
+                },
+                event::Key::Down => {
+                    app_state.selected_channel += 1;
+                    if app_state.selected_channel > app_state.channels.len() - 1 {
+                        app_state.selected_channel = 0;
+                    }
+                },
+                event::Key::Up => {
+                    if app_state.selected_channel > 0 {
+                        app_state.selected_channel -= 1;
+                    } else {
+                        app_state.selected_channel = app_state.channels.len() - 1;
+                    }
                 },
                 event::Key::Ctrl('c') => {
                     tx.send(true);
@@ -166,12 +183,9 @@ fn draw(t: &mut Terminal<RawBackend>, state: &mut AppState) {
     let state = &*state;
     let style = Style::default().fg(Color::Yellow);
 
-    let state = &*state;
-
-
     Group::default()
         .direction(Direction::Vertical)
-        .sizes(&[Size::Min(0), Size::Fixed(3)])
+        .sizes(&[Size::Fixed(10), Size::Min(0), Size::Fixed(3)])
         .render(t, &size, |t, chunks| {
             let msgs = state.messages.iter().map( |msg| {
                 Item::StyledData(
@@ -180,14 +194,22 @@ fn draw(t: &mut Terminal<RawBackend>, state: &mut AppState) {
                 )
             });
 
-            List::new(msgs)
-                .block(Block::default().borders(Borders::ALL).title("Discord"))
+            SelectableList::default()
+                .block(Block::default().borders(Borders::ALL).title("Channels"))
+                .channels(&state.channels)
+                .select(state.selected_channel)
+                .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::Bold))
+                .highlight_symbol(">")
                 .render(t, &chunks[0]);
+
+            List::new(msgs)
+                .block(Block::default().borders(Borders::ALL).title("#channel")) // TODO: use actual channel name
+                .render(t, &chunks[1]);
 
             Paragraph::default()
                 .text(&state.content[..])
-                .block(Block::default().borders(Borders::ALL).title("Terminal"))
-                .render(t, &chunks[1]);
+                .block(Block::default().borders(Borders::ALL).title("Message #channel")) // TODO: use actual channel name
+                .render(t, &chunks[2]);
         });
 
     t.draw();
