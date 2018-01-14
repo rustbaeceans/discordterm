@@ -43,6 +43,15 @@ impl AppState {
         content_to_append.push(chr);
         self.content = format!("{}{}", self.content, content_to_append);
     }
+    fn remove_character(&mut self) {
+        let n = self.content.chars().count();
+        if (n != 0) {
+            self.content = String::from(&self.content[..n-1]);
+        }
+    }
+    fn send_message(&mut self) {
+        self.content = String::from("");
+    }
 }
 
 fn read_token() -> String {
@@ -106,8 +115,15 @@ fn main() {
 
             let evt = c.unwrap();
             match evt {
+                event::Key::Char('\n') => {
+                    app_state.send_message();
+                },
                 event::Key::Char(chr) => {
                     app_state.add_character(chr);
+                    terminal.show_cursor().unwrap();
+                },
+                event::Key::Backspace => {
+                    app_state.remove_character();
                 },
                 event::Key::Ctrl('c') => {
                     tx.send(true);
@@ -155,7 +171,7 @@ fn draw(t: &mut Terminal<RawBackend>, state: &mut AppState) {
 
     Group::default()
         .direction(Direction::Vertical)
-        .sizes(&[Size::Percent(90), Size::Percent(10)])
+        .sizes(&[Size::Min(0), Size::Fixed(3)])
         .render(t, &size, |t, chunks| {
             let msgs = state.messages.iter().map( |msg| {
                 Item::StyledData(
