@@ -48,6 +48,7 @@ struct AppState {
 
 struct Server {
     channels: Vec<Channel>,
+    active_channel: usize,
     server_info: discord::model::ServerInfo,
 }
 
@@ -163,6 +164,7 @@ fn main() {
 
     let test_server1 = Server {
         channels: vec!(test_channel1, test_channel2),
+        active_channel: 0,
         server_info: discord::model::ServerInfo {
             id: discord::model::ServerId {
                 0: 1234,
@@ -176,6 +178,7 @@ fn main() {
 
     let test_server2 = Server {
         channels: vec!(test_channel3, test_channel4),
+        active_channel: 0,
         server_info: discord::model::ServerInfo {
             id: discord::model::ServerId {
                 0: 12345,
@@ -231,15 +234,13 @@ fn main() {
                     app_state.remove_character();
                 },
                 event::Key::Down => {
-                    let current_index = app_state.active_server;
-                    let new_index = (current_index + 1) % app_state.servers.len();
-                    app_state.active_server = new_index;
+                    app_state.active_server = (app_state.active_server + 1) % app_state.servers.len();
                 },
                 event::Key::Up => {
                     if app_state.active_server > 0 {
                         app_state.active_server -= 1;
                     } else {
-                        app_state.active_server = app_state.servers.len();
+                        app_state.active_server = app_state.servers.len() - 1;
                     }
                 },
                 event::Key::Ctrl('c') => {
