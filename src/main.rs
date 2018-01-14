@@ -3,18 +3,21 @@ extern crate chan;
 extern crate termion;
 extern crate tui;
 extern crate discord;
+extern crate rpassword;
 
 use std::thread;
 use std::sync::{Arc, Mutex};
 
-use std::io;
+use rpassword::read_password;
 use std::vec::Vec;
 use std::fs::File;
 use std::io::Read;
+use std::io;
 use std::time;
 use std::cmp::{max, min};
 
 use discord::model::Message;
+use discord::Discord;
 
 use termion::event;
 use termion::event::Key;
@@ -203,28 +206,48 @@ impl Server {
     }
 }
 
-fn read_token() -> String {
+fn read_token() -> Option<String> {
     let mut data = String::new();
     let mut f = match File::open("./token") {
         Ok(x) => x,
         Err(x) => {
-            println!("Couldn't log in.");
-            return String::from("0");
+            println!("Couldn't read token file.");
+            return None;
         }
     };
 
     f.read_to_string(&mut data).expect("Unable to read string");
-    data
+    Some(data)
 }
 
 fn main() {
 
+    let discord: Discord = match read_token() {
+        None => {
+            println!("Check readme to see how to save a token for next time.");
+            println!("Falling back to email/pw login.");
+            let mut email = String::new();
+            println!("Email:");
+            io::stdin()
+            .read_line(&mut email)
+            .expect("failed to read from stdin");
+            println!("Password:");
+            let pw = read_password().unwrap();
+            Discord::new(&email, &pw).expect("Failed to log in.")
+        },
+        Some(user_token) => match Discord::from_user_token(&user_token) {
+                Ok(discord_client) => discord_client,
+                Err(error) => {
+                    panic!("Login Failed: {}", error);
+                }
+            }
+    };
     let backend = RawBackend::new().unwrap();
 
     let channel_to_discord = chan::async();
     let channel_from_discord = chan::async();
     // give provider the from_discord sender and the to_discord receiver
-    let provider = DiscordProvider::init(read_token(), (
+    let provider = DiscordProvider::init(discord, (
         channel_from_discord.0.clone(),
         channel_to_discord.1.clone(),
     ));
@@ -250,7 +273,7 @@ fn main() {
     };
     app_state.get_servers();
     let test_channel1 = Channel {
-        name: String::from("Test Channel S1 - 1"),
+        name: String::from("Loading..."),
         id: discord::model::ChannelId {
             0: 1,
         },
@@ -258,7 +281,7 @@ fn main() {
     };
 
     let test_channel2 = Channel {
-        name: String::from("Test Channel S1 - 2"),
+        name: String::from(""),
         id: discord::model::ChannelId {
             0: 2,
         },
@@ -266,7 +289,7 @@ fn main() {
     };
 
     let test_channel3 = Channel {
-        name: String::from("Test Channel S2 - 3"),
+        name: String::from("wew lad"),
         id: discord::model::ChannelId {
             0: 3,
         },
@@ -274,7 +297,7 @@ fn main() {
     };
 
     let test_channel4 = Channel {
-        name: String::from("Test Channel S2 - 4"),
+        name: String::from(""),
         id: discord::model::ChannelId {
             0: 4,
         },
@@ -289,7 +312,7 @@ fn main() {
             id: discord::model::ServerId {
                 0: 1234,
             },
-            name: String::from("Test Server 1"),
+            name: String::from("Loading..."),
             icon: None,
             owner: true,
             permissions: discord::model::permissions::Permissions::empty(),
@@ -303,7 +326,7 @@ fn main() {
             id: discord::model::ServerId {
                 0: 12345,
             },
-            name: String::from("Test Server 2"),
+            name: String::from("Fetching servers..."),
             icon: None,
             owner: true,
             permissions: discord::model::permissions::Permissions::empty(),

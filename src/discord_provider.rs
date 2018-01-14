@@ -30,17 +30,11 @@ pub enum MsgToDiscord {
 
 impl DiscordProvider {
     pub fn init(
-        user_token: String,
+        discord: Discord,
         channel: (Sender<MsgFromDiscord>, Receiver<MsgToDiscord>),
     ) -> Self {
         DiscordProvider {
-            discord: match Discord::from_user_token(&user_token) {
-                Ok(discord_client) => Some(discord_client),
-                Err(error) => {
-                    panic!("Login Failed: {}", error);
-                    None
-                }
-            },
+            discord: Some(discord),
             tx: channel.0,
             rx: channel.1,
         }
