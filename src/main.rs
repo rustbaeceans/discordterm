@@ -142,7 +142,7 @@ impl AppState {
         };
     }
     fn set_channels(&mut self, owner: discord::model::ServerId, channels: Vec<discord::model::PublicChannel>) {
-        let temp = self.servers.clone();     
+        let temp = self.servers.clone();
         let (i, owning_server) = temp.iter().enumerate().find(|&(i, server)| {
             server.server_info.id == owner
         }).unwrap();
@@ -387,12 +387,18 @@ fn main() {
                         MsgFromDiscord::Channels(server_id, channels) => {
                             app_state.set_channels(server_id, channels)
                         },
-                        _ => {
+                        MsgFromDiscord::ChatMsg(message) => {
                             app_state.messages.push(MockMessage{
-                                username: String::from("DiscordProvider"),
-                                content: String::from(format!("{:?}", message)),
+                                username: message.author.name,
+                                content: message.content,
                             })
-                        }
+                        },
+                        MsgFromDiscord::EchoResponse(message) => {
+                            app_state.messages.push(MockMessage{
+                                username: String::from("me"),
+                                content: message,
+                            })
+                        },
                     }
                 }
 

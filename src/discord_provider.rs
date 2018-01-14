@@ -56,7 +56,7 @@ impl DiscordProvider {
 
         let (sender, reciever) = chan::sync(0);
         thread::spawn(move || monitor_websocket(connection, sender));
-        
+
         handle_messages(discord_client, self.tx, self.rx, reciever)
     }
 }
