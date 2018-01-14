@@ -113,6 +113,9 @@ impl Server {
             self.active_channel = self.channels.len() - 1;
         }
     }
+    fn active_channel(&mut self) -> &mut Channel {
+        &mut self.channels[self.active_channel]
+    }
 }
 
 fn read_token() -> String {
