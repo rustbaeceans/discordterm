@@ -4,8 +4,8 @@ version = "0.1.0"
 authors = ["Em Sal <absolutezero2a03@gmail.com>"]
 
 [dependencies]
-tui="0.2.0"
-termion="1.4.0"
-discord= { git = "https://github.com/jimqi/discord-rs.git", branch="master"}
-chan="0.1.19"
+tui="0.2.1"
+termion="1.5.1"
+discord= { git = "https://github.com/tinaun/discord-rs", branch="master"}
+chan="0.1.21"
 rpassword = "0.0.4"

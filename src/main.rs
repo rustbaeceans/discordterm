@@ -32,23 +32,41 @@ use tui::style::{Color, Modifier, Style};
 mod discord_provider;
 use discord_provider::{DiscordProvider, MsgToDiscord, MsgFromDiscord};
 
+
+static selectedBorder: Style = Style {
+    fg: Color::Green,
+    bg: Color::Reset,
+    modifier: Modifier::Bold
+};
+static defaultBorder: Style = Style {
+    fg: Color::Gray,
+    bg: Color::Reset,
+    modifier: Modifier::Reset
+};
+
+
 struct MockMessage {
     username: String,
     content: String,
 }
 
-enum TabSelect {
-    Channels,
-    Servers,
+#[derive(Debug)]
+enum Mode {
+    Normal,
+    MessageInsert,
+    ChannelSelect,
+    ServerSelect,
+    Command,
+    Exiting
 }
-
 struct AppState {
+    size: Rect,
     messages: Vec<MockMessage>,
     content: String,
     offset: usize,
     servers: Vec<Server>,
     active_server: usize,
-    selected_tab: TabSelect,
+    mode: Mode,
     to_provider: chan::Sender<MsgToDiscord>,
     from_provider: chan::Receiver<MsgFromDiscord>,
 }
@@ -138,6 +156,12 @@ impl AppState {
     fn get_servers(&self) {
         self.to_provider.send(MsgToDiscord::GetServers);
     }
+    fn quit(&mut self) {
+
+        self.mode = Mode::Exiting;
+        self.to_provider.send(MsgToDiscord::Logout);
+        
+    }
     fn set_servers(&mut self, servers: Vec<discord::model::ServerInfo>) {
         self.servers.clear();
 
@@ -161,13 +185,61 @@ impl AppState {
         self.servers[i].channels = channels.iter().map(|d_channel| {
             let d_channel = d_channel.clone();
             Channel {
-                name: d_channel.name,
+                name: format!("{} ({})", d_channel.name, d_channel.kind.name()),
                 id: d_channel.id,
                 messages: vec!(),
             }
         }).collect();
     }
+    fn handle_key(&mut self, key: Key) {
+        match self.mode {
+            Mode::Normal => {
+                match key {
+                    Key::Char('i') => {self.mode = Mode::MessageInsert},
+                    Key::Char(':') => {self.mode = Mode::Command},
+                    Key::Char('s') => {self.mode = Mode::ServerSelect},
+                    Key::Char('c') => {self.mode = Mode::ChannelSelect},
 
+                    //Key::Char('k') => self.mode = Mode::Command,
+                    //Key::Char('j') => self.mode = Mode::Command,
+                    _ => ()
+                }
+            },
+            Mode::MessageInsert => {
+                match key {
+                    Key::Char('\n') => {
+                        self.send_message();
+                    }
+                    Key::Char(chr) => {
+                        self.add_character(chr);
+                    }
+                    Key::Backspace => {
+                        self.remove_character();
+                    }
+                    Key::Esc => {self.mode = Mode::Normal}
+                    _ => ()
+                }
+            },
+            Mode::ChannelSelect => {
+                match key {
+                    Key::Esc => {self.mode = Mode::Normal}
+                    _ => ()
+                }},
+            Mode::ServerSelect => {
+                match key {
+                    Key::Esc => {self.mode = Mode::Normal}
+                    _ => ()
+                }
+                },
+            Mode::Command => {
+                match key {
+                    Key::Esc => {self.mode = Mode::Normal}
+                    Key::Char('q') => self.quit(),
+                    _ =>self.to_provider.send(MsgToDiscord::Echo(format!("Unsupported key for {:?} mode: {:?}", self.mode, key)))
+            }},
+            _ => ()
+        }
+    }
     fn store_message(&mut self, message: discord::model::Message) {
         let channel_id = message.channel_id;
         for server in self.servers.iter_mut() {
@@ -221,7 +293,6 @@ fn read_token() -> Option<String> {
 }
 
 fn main() {
-
     let discord: Discord = match read_token() {
         None => {
             println!("Check readme to see how to save a token for next time.");
@@ -253,26 +324,22 @@ fn main() {
     ));
     thread::spawn(|| { provider.start_provider(); });
 
-    let example_message3 = String::from("test");
-    channel_to_discord.0.send(MsgToDiscord::SendMessage(
-        discord::model::ChannelId {
-            0: 402096812296503298,
-        },
-        example_message3,
-    ));
+ 
     let mut terminal = Terminal::new(backend).unwrap();
+ 
     let mut app_state = AppState {
+        size: Rect::default(),
         messages: vec![],
         content: String::from(""),
         offset: 0,
         active_server: 0,
         servers: vec![],
-        selected_tab: TabSelect::Channels,
+        mode: Mode::Normal,
         to_provider: channel_to_discord.0.clone(),
         from_provider: channel_from_discord.1.clone(),
     };
     app_state.get_servers();
-    let test_channel1 = Channel {
+    let dummy_channel = Channel {
         name: String::from("Loading..."),
         id: discord::model::ChannelId {
             0: 1,
@@ -280,33 +347,8 @@ fn main() {
         messages: vec![],
     };
 
-    let test_channel2 = Channel {
-        name: String::from(""),
-        id: discord::model::ChannelId {
-            0: 2,
-        },
-        messages: vec![],
-    };
-
-    let test_channel3 = Channel {
-        name: String::from("wew lad"),
-        id: discord::model::ChannelId {
-            0: 3,
-        },
-        messages: vec![],
-    };
-
-    let test_channel4 = Channel {
-        name: String::from(""),
-        id: discord::model::ChannelId {
-            0: 4,
-        },
-        messages: vec![],
-    };
-
-
-    let test_server1 = Server {
-        channels: vec![test_channel1, test_channel2],
+    let dummy_server = Server {
+        channels: vec![dummy_channel],
         active_channel: 0,
         server_info: discord::model::ServerInfo {
             id: discord::model::ServerId {
@@ -319,23 +361,7 @@ fn main() {
         },
     };
 
-    let test_server2 = Server {
-        channels: vec![test_channel3, test_channel4],
-        active_channel: 0,
-        server_info: discord::model::ServerInfo {
-            id: discord::model::ServerId {
-                0: 12345,
-            },
-            name: String::from("Fetching servers..."),
-            icon: None,
-            owner: true,
-            permissions: discord::model::permissions::Permissions::empty(),
-        },
-    };
-
-
-    app_state.servers.push(test_server1);
-    app_state.servers.push(test_server2);
+    app_state.servers.push(dummy_server);
     let terminal = Arc::new(Mutex::new(terminal));
     let app_state = Arc::new(Mutex::new(app_state));
 
@@ -346,47 +372,51 @@ fn main() {
     draw(&mut term.lock().unwrap(), &mut state.lock().unwrap());
 
     let stdin = io::stdin();
-    let (tx, rx) = chan::async();
 
     let term = Arc::clone(&terminal);
     let state = Arc::clone(&app_state);
 
     thread::spawn(move || {
-        let tx = tx.clone();
 
         for c in stdin.keys() {
             let mut terminal = term.lock().unwrap();
             let mut app_state = state.lock().unwrap();
 
             let evt = c.unwrap();
-            match evt {
-                event::Key::Char('\n') => {
-                    app_state.send_message();
+            app_state.handle_key(evt);
+
+            match app_state.mode {
+                Mode::Command => terminal.show_cursor(),
+                Mode::MessageInsert => terminal.show_cursor(),
+                Mode::Exiting => {
+                    terminal.show_cursor();
+                    terminal.clear();
+                    std::process::exit(0);
                 }
+                _ => terminal.hide_cursor()
+            };
+
+            /*
+            match evt {
                 event::Key::Char('\t') => {
                     app_state.selected_tab = match app_state.selected_tab {
                         TabSelect::Servers => TabSelect::Channels,
                         TabSelect::Channels => TabSelect::Servers,
                     }
                 }
-                event::Key::Char(chr) => {
-                    app_state.add_character(chr);
-                    terminal.show_cursor().unwrap();
-                }
-                event::Key::Backspace => {
-                    app_state.remove_character();
-                }
                 event::Key::Down => {
                     match app_state.selected_tab {
                         TabSelect::Servers => app_state.next_server(),
                         TabSelect::Channels => app_state.active_server().next_channel(),
                     }
+                    terminal.draw();
                 },
                 event::Key::Up => {
                     match app_state.selected_tab {
                         TabSelect::Servers => app_state.prev_server(),
                         TabSelect::Channels => app_state.active_server().prev_channel(),
                     }
+                    terminal.draw();
                 },
                 event::Key::Left => {
                     app_state.offset = match app_state.offset.checked_sub(1) {
@@ -403,6 +433,7 @@ fn main() {
                 }
                 _ => {}
             }
+            */
             draw(&mut terminal, &mut app_state);
         }
     });
@@ -414,9 +445,6 @@ fn main() {
         chan_select! {
             default => {
                 thread::sleep_ms(10);
-            },
-            rx.recv() => {
-                break;
             },
             rx_from_pvdr.recv() -> val => {
                 let mut terminal = term.lock().unwrap();
@@ -432,7 +460,8 @@ fn main() {
                         },
                         MsgFromDiscord::ChatMsg(message) => {
                             app_state.store_message(message);
-                        }
+                        },
+						MsgFromDiscord::Exit => {println!("Got exit msg"); break;},
                         _ => {
                             app_state.messages.push(MockMessage{
                                 username: String::from("DiscordProvider"),
@@ -442,6 +471,12 @@ fn main() {
                     }
                 }
 
+
+				let size = terminal.size().unwrap();
+				if size != app_state.size {
+					terminal.resize(size).unwrap();
+					app_state.size = size;
+				}
                 draw(&mut terminal, &mut app_state);
             },
         };
@@ -451,35 +486,36 @@ fn main() {
     let mut t = term.lock().unwrap();
     t.show_cursor().unwrap();
     t.clear().unwrap();
+    std::process::exit(0);
 }
 
 fn draw(t: &mut Terminal<RawBackend>, state: &AppState) {
     let size = t.size().unwrap();
     let channel_name = "temp1";
 
-    Group::default()
-        .direction(Direction::Vertical)
-        .sizes(&[Size::Min(0), Size::Fixed(3)])
+    Group::default().direction(Direction::Vertical)
+        .sizes(&[Size::Min(1), Size::Fixed(1)])
         .render(t, &size, |t, chunks| {
-
-            draw_top(t, state, &chunks[0]);
-
-            Paragraph::default()
-                .text(&state.content[..])
-                .block(Block::default().borders(Borders::ALL).title("Message #channel")) // &format!("Message #{}", channel_name) <-- TODO: Figure out why this makes it slower
-                .render(t, &chunks[1]);
+            Group::default()
+                .direction(Direction::Horizontal)
+                .sizes(&[Size::Percent(20), Size::Percent(80)])
+                .render(t, &chunks[0], |t, chunks| {
+                    draw_left(t, state, &chunks[0]);
+                    draw_messagePane(t, state, &chunks[1]);
+                });
+            Paragraph::default().text(&format!("Mode: {:?}", state.mode)).render(t, &chunks[1]);
         });
 
     t.draw();
 }
 
-fn draw_top(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
+fn draw_messagePane(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
     let style = Style::default().fg(Color::Yellow);
     let mut channel_name = "temp2";
 
     Group::default()
-        .direction(Direction::Horizontal)
-        .sizes(&[Size::Percent(20), Size::Min(0)])
+        .direction(Direction::Vertical)
+        .sizes(&[Size::Percent(90), Size::Min(0)])
         .render(t, area, |t, chunks| {
             let active_server = &state.servers[state.active_server];
             let mut msgs: Vec<discord::model::Message> = vec!();
@@ -504,12 +540,23 @@ fn draw_top(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
                 )
             });
 
-            draw_left(t, state, &chunks[0]);
-
 
             List::new(msgs)
                 .block(Block::default().borders(Borders::ALL).title(&format!("#{}", channel_name)[..]))
-                .render(t, &chunks[1]);
+                .render(t, &chunks[0]);
+            match state.mode {
+                Mode::MessageInsert => {
+                     Paragraph::default()
+                        .text(&state.content[..])
+                        .block(Block::default().borders(Borders::ALL).title(&format!("Message #{}", channel_name)))
+                        .render(t, &chunks[1]);
+                }
+                _ => {
+                    Paragraph::default().text("help goes here")
+                        .block(Block::default())
+                        .render(t, &chunks[1]);
+                }
+            }
         });
 }
 
@@ -521,19 +568,31 @@ fn draw_left(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
 
 
             SelectableList::default()
-                .block(Block::default().borders(Borders::ALL).title("Servers"))
+                .block(Block::default().borders(Borders::ALL).title("Servers").border_style(selectedBorder))
                 .items(&state.servers)
                 .select(state.active_server)
-                .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::Bold))
-                .highlight_symbol(">")
+                .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::Bold))
+                /*
+                 *.highlight_symbol(
+                 *    match state.selected_tab {
+                 *    TabSelect::Servers=>">",
+                 *    _ => " "
+                 *})
+                 */
                 .render(t, &chunks[0]);
 
             SelectableList::default()
                 .block(Block::default().borders(Borders::ALL).title("Channels"))
                 .items(&state.servers[state.active_server].channels)
                 .select(state.servers[state.active_server].active_channel)
-                .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::Bold))
-                .highlight_symbol(">")
+                .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::Bold))
+                /*
+                 *.highlight_symbol(
+                 *    match state.selected_tab {
+                 *    TabSelect::Channels=>">",
+                 *    _ => " "
+                 *})
+                 */
                 .render(t, &chunks[1]);
 
         });

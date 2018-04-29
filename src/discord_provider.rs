@@ -8,6 +8,7 @@ use thread;
 //#[derive(Debug)]
 pub struct DiscordProvider {
     discord: Option<Discord>,
+
     tx: Sender<MsgFromDiscord>,
     rx: Receiver<MsgToDiscord>,
 }
@@ -17,6 +18,7 @@ pub enum MsgFromDiscord {
     Servers(Vec<ServerInfo>),
     Channels(ServerId, Vec<PublicChannel>),
     ChatMsg(Message),
+	Exit, // FIN-ACK basically
     EchoResponse(String)
 }
 
@@ -25,6 +27,7 @@ pub enum MsgToDiscord {
     GetServers,
     GetChannels(ServerId),
     SendMessage(ChannelId, String),
+    Logout, // FIN
     Echo(String), // Testing echo back what we got
 }
 
@@ -48,17 +51,23 @@ impl DiscordProvider {
             .expect("Failed to initialize websocket connection")
             .0;
 
-        let (sender, reciever) = chan::sync(0);
-        thread::spawn(move || monitor_websocket(connection, sender));
+        let (sender, reciever) = chan::async();
+		let (sdone, rdone) = chan::async();
+        thread::spawn(move || monitor_websocket(connection, sender,rdone));
         
-        handle_messages(discord_client, self.tx, self.rx, reciever)
+        handle_messages(discord_client, self.tx, self.rx, reciever, sdone)
     }
 }
 
-fn monitor_websocket(mut connection: Connection, discord_sender: Sender<Event>) {
+fn monitor_websocket(mut connection: Connection, discord_sender: Sender<Event>, close:Receiver<()>) {
     loop {
+		chan_select! {
+			default => (),
+			close.recv() => {println!("Websocket closing."); break;},
+            
+		}
         let event = match connection.recv_event() {
-            Ok(event) => event,
+            Ok(event) => discord_sender.send(event),
             Err(error) => {
                 // Don't spam if something goes wrong
                 thread::sleep_ms(1000);
@@ -66,7 +75,6 @@ fn monitor_websocket(mut connection: Connection, discord_sender: Sender<Event>) 
             }
         };
 
-        discord_sender.send(event);
     };
 }
 
@@ -75,12 +83,14 @@ fn handle_messages(
     discord: Discord,
     ui_sender: Sender<MsgFromDiscord>,
     ui_reciever: Receiver<MsgToDiscord>,
-    discord_reciever: Receiver<Event>) {
+    discord_reciever: Receiver<Event>,
+	close:Sender<()>) {
     loop {
         chan_select! {
             default => {},
             ui_reciever.recv() -> val => {
                 let message = val.unwrap();
+                //println!("{:?}", message);
                 match message {
                     MsgToDiscord::GetServers => {
                         let s = discord.get_servers();
@@ -97,6 +107,11 @@ fn handle_messages(
                     MsgToDiscord::SendMessage(channel, content) => {
                         discord.send_message(channel, &content, "", false);
                     },
+                    MsgToDiscord::Logout => {
+						close.send(());
+						ui_sender.send(MsgFromDiscord::Exit);
+						return;	
+                    }
                     MsgToDiscord::Echo(message) => {
                         ui_sender.send(MsgFromDiscord::EchoResponse(message));
                     },
