@@ -44,19 +44,19 @@ static defaultBorder: Style = Style {
     modifier: Modifier::Reset
 };
 
-
 struct MockMessage {
     username: String,
     content: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 enum Mode {
     Normal,
-    MessageInsert,
+    TextInput,
     ChannelSelect,
     ServerSelect,
     Command,
+    Fzf,
     Exiting
 }
 struct AppState {
@@ -67,6 +67,7 @@ struct AppState {
     servers: Vec<Server>,
     active_server: usize,
     mode: Mode,
+    mode_stack: Vec<Mode>,
     to_provider: chan::Sender<MsgToDiscord>,
     from_provider: chan::Receiver<MsgFromDiscord>,
 }
@@ -129,15 +130,12 @@ impl AppState {
             self.offset = left_bound;
         }
     }
-    fn send_message(&mut self) {
+    fn send_message(&mut self, text: String) {
         // self.to_provider.send(MsgToDiscord::Echo(self.content.clone()));
         let provider = &self.to_provider;
-        let text = self.content.clone();
         let active_server = &self.servers[self.active_server];
         let active_channel = &active_server.channels[active_server.active_channel];
         active_channel.send_message(provider, text);
-        self.content = String::from("");
-        self.offset = 0;
     }
     fn next_server(&mut self) {
         let new_index = (self.active_server + 1) % self.servers.len();
@@ -150,6 +148,7 @@ impl AppState {
             self.active_server = self.servers.len() - 1;
         }
     }
+
     fn active_server(&mut self) -> &mut Server {
         &mut self.servers[self.active_server]
     }
@@ -191,24 +190,61 @@ impl AppState {
             }
         }).collect();
     }
+
+
+    fn switch_mode(&mut self, new_mode: Mode){
+        let old_mode = self.mode.clone();
+        self.mode = new_mode;
+        self.mode_stack.push(old_mode);
+        match self.mode {
+            Mode::Command => self.switch_mode(Mode::TextInput),
+            _ => ()
+        }
+        // todo: state transitions?
+    }
+    fn prev_mode(&mut self){
+        self.mode = self.mode_stack.pop().unwrap_or(Mode::Normal);
+    }
+    fn perform_command(&mut self, command: String){
+        assert_eq!(self.mode, Mode::Command);
+        match command.as_ref() {
+            "q" => self.quit(),
+            _ => self.print(format!("Unknown command {}", command))
+        };
+        self.prev_mode()
+    }
+
+    fn process_text_input(&mut self) {
+        let text = self.content.clone();
+        self.content = String::from("");
+        self.offset = 0;
+        match self.mode {
+            Mode::Normal => self.send_message(text),
+            Mode::Command => self.perform_command(text),
+            _ => panic!("How did we get to {:?} from TextInput? Stack: {:?}", self.mode, self.mode_stack)
+
+        }
+    }
     fn handle_key(&mut self, key: Key) {
         match self.mode {
             Mode::Normal => {
                 match key {
-                    Key::Char('i') => {self.mode = Mode::MessageInsert},
-                    Key::Char(':') => {self.mode = Mode::Command},
-                    Key::Char('s') => {self.mode = Mode::ServerSelect},
-                    Key::Char('c') => {self.mode = Mode::ChannelSelect},
-
+                    Key::Char('i') => self.switch_mode(Mode::TextInput),
+                    Key::Char(':') => self.switch_mode(Mode::Command),
+                    Key::Char('s') => self.switch_mode(Mode::ServerSelect),
+                    Key::Char('c') => self.switch_mode(Mode::ChannelSelect),
+                    Key::Ctrl('k') => self.switch_mode(Mode::Fzf),
+                    Key::Char('/') => self.switch_mode(Mode::Fzf),
                     //Key::Char('k') => self.mode = Mode::Command,
                     //Key::Char('j') => self.mode = Mode::Command,
                     _ => ()
                 }
             },
-            Mode::MessageInsert => {
+            Mode::TextInput => {
                 match key {
                     Key::Char('\n') => {
-                        self.send_message();
+                        self.prev_mode();
+                        self.process_text_input();
                     }
                     Key::Char(chr) => {
                         self.add_character(chr);
@@ -216,18 +252,24 @@ impl AppState {
                     Key::Backspace => {
                         self.remove_character();
                     }
-                    Key::Esc => {self.mode = Mode::Normal}
+                    Key::Esc => self.prev_mode(),
                     _ => ()
                 }
             },
             Mode::ChannelSelect => {
                 match key {
                     Key::Esc => {self.mode = Mode::Normal}
+                    Key::Char('\t') => {self.mode = Mode::ServerSelect}
+                    Key::Char('k') => self.active_server().prev_channel(),
+                    Key::Char('j') => self.active_server().next_channel(),
                     _ => ()
                 }},
             Mode::ServerSelect => {
                 match key {
                     Key::Esc => {self.mode = Mode::Normal}
+                    Key::Char('\t') => {self.mode = Mode::ChannelSelect}
+                    Key::Char('k') => self.prev_server(),
+                    Key::Char('j') => self.next_server(),
                     _ => ()
                 }
                 },
@@ -235,10 +277,13 @@ impl AppState {
                 match key {
                     Key::Esc => {self.mode = Mode::Normal}
                     Key::Char('q') => self.quit(),
-                    _ =>self.to_provider.send(MsgToDiscord::Echo(format!("Unsupported key for {:?} mode: {:?}", self.mode, key)))
+                    _ =>self.print(format!("Unsupported key for {:?} mode: {:?}", self.mode, key))
             }},
             _ => ()
         }
+    }
+    fn print(&self, what: String){
+        self.to_provider.send(MsgToDiscord::Echo(what));
     }
     fn store_message(&mut self, message: discord::model::Message) {
         let channel_id = message.channel_id;
@@ -335,6 +380,7 @@ fn main() {
         active_server: 0,
         servers: vec![],
         mode: Mode::Normal,
+        mode_stack: vec![],
         to_provider: channel_to_discord.0.clone(),
         from_provider: channel_from_discord.1.clone(),
     };
@@ -386,8 +432,7 @@ fn main() {
             app_state.handle_key(evt);
 
             match app_state.mode {
-                Mode::Command => terminal.show_cursor(),
-                Mode::MessageInsert => terminal.show_cursor(),
+                Mode::TextInput => terminal.show_cursor(),
                 Mode::Exiting => {
                     terminal.show_cursor();
                     terminal.clear();
@@ -545,14 +590,19 @@ fn draw_messagePane(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect)
                 .block(Block::default().borders(Borders::ALL).title(&format!("#{}", channel_name)[..]))
                 .render(t, &chunks[0]);
             match state.mode {
-                Mode::MessageInsert => {
+                Mode::TextInput => {
                      Paragraph::default()
                         .text(&state.content[..])
                         .block(Block::default().borders(Borders::ALL).title(&format!("Message #{}", channel_name)))
                         .render(t, &chunks[1]);
                 }
                 _ => {
-                    Paragraph::default().text("help goes here")
+                    List::new(match state.mode {
+                        Mode::Normal => vec!["c - Select Channel", "s - Select Server", "i - Insert Message", ": - Command"],
+                        Mode::ChannelSelect => vec!["j/k - Move", "Tab - Select Server", "Enter - Accept"],
+                        Mode::ServerSelect => vec!["j/k - Move", "Tab - Select Channel", "Enter - Accept"],
+                        _ => vec![]
+                    }.iter().map(|x| Item::Data(x)))
                         .block(Block::default())
                         .render(t, &chunks[1]);
                 }
@@ -568,31 +618,33 @@ fn draw_left(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect) {
 
 
             SelectableList::default()
-                .block(Block::default().borders(Borders::ALL).title("Servers").border_style(selectedBorder))
+                .block(Block::default().borders(Borders::ALL).title("Servers").border_style(match state.mode {
+                    Mode::ServerSelect => selectedBorder,
+                    _ => defaultBorder
+                }))
                 .items(&state.servers)
                 .select(state.active_server)
                 .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::Bold))
-                /*
-                 *.highlight_symbol(
-                 *    match state.selected_tab {
-                 *    TabSelect::Servers=>">",
-                 *    _ => " "
-                 *})
-                 */
+                .highlight_symbol(
+                    match state.mode {
+                    Mode::ServerSelect => ">",
+                    _ => "-"
+                })
                 .render(t, &chunks[0]);
 
             SelectableList::default()
-                .block(Block::default().borders(Borders::ALL).title("Channels"))
+                .block(Block::default().borders(Borders::ALL).title("Channels").border_style(match state.mode {
+                    Mode::ChannelSelect => selectedBorder,
+                    _ => defaultBorder
+                }))
                 .items(&state.servers[state.active_server].channels)
                 .select(state.servers[state.active_server].active_channel)
                 .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::Bold))
-                /*
-                 *.highlight_symbol(
-                 *    match state.selected_tab {
-                 *    TabSelect::Channels=>">",
-                 *    _ => " "
-                 *})
-                 */
+                .highlight_symbol(
+                    match state.mode {
+                    Mode::ChannelSelect => ">",
+                    _ => "-"
+                })
                 .render(t, &chunks[1]);
 
         });
