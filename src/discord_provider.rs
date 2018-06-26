@@ -1,9 +1,10 @@
-use discord::Discord;
-use discord::Connection;
+use discord::{Discord, Connection, GetMessages};
 use discord::model::*;
 use chan::{Sender, Receiver};
 use chan;
 use thread;
+use std::cmp::min;
+use std::fmt;
 
 //#[derive(Debug)]
 pub struct DiscordProvider {
@@ -22,14 +23,25 @@ pub enum MsgFromDiscord {
     EchoResponse(String)
 }
 
-#[derive(Debug)]
 pub enum MsgToDiscord {
     GetServers,
     GetChannels(ServerId),
+    GetMessages(ChannelId, GetMessages, usize),
     SendMessage(ChannelId, String),
     Logout, // FIN
     Echo(String), // Testing echo back what we got
 }
+
+impl fmt::Debug for MsgToDiscord {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use MsgToDiscord::*;
+        match self {
+            &GetMessages(x,_,z) => write!(f, "Get {} messages from {:?}", z, x),
+            x => write!(f,"{:?}", x)
+        }
+    }
+}
+
 
 impl DiscordProvider {
     pub fn init(
@@ -115,7 +127,8 @@ fn handle_messages(
                     MsgToDiscord::Echo(message) => {
                         ui_sender.send(MsgFromDiscord::EchoResponse(message));
                     },
-                    _ => (),
+                    MsgToDiscord::GetMessages(id, gm, count) => (),
+                    x => panic!("Unrecognized message {:?}",x)
                 }
             },
             discord_reciever.recv() -> val => {
@@ -128,5 +141,55 @@ fn handle_messages(
                 }
             },
         }
+    }
+}
+struct MessageIterator<'a> {
+    last: Option<MessageId>,
+    client: &'a Discord,
+    channelid: ChannelId,
+    total_desired: usize,
+}
+impl<'a> MessageIterator<'a> {
+    fn new(client: &'a Discord, channelid: ChannelId, count: usize) -> MessageIterator<'a> {
+        MessageIterator {
+            last: None,
+            client,
+            channelid,
+            total_desired: count,
+        }
+    }
+    /// Flattens and collects the iterator of Vecs into a single Vec
+    fn collect(self) -> Vec<Message> {
+        // self is moved in to consume the iterator into a list
+        self.flat_map(|x| x).collect()
+    }
+}
+impl<'a> Iterator for MessageIterator<'a> {
+    type Item = Vec<Message>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.total_desired <= 0 {
+            return None;
+        }
+        let what = match self.last {
+            Some(id) => GetMessages::Before(id),
+            None => GetMessages::MostRecent,
+        };
+        let limit = min(self.total_desired, 100); // API is limited to 100
+
+        println!("Getting {} messages from {}", limit, self.channelid);
+        let messages = self.client
+            .get_messages(self.channelid, what, Some(limit as u64))
+            .expect("Failed to get messages.");
+
+        if messages.len() < limit {
+           self.total_desired = 0; 
+        } else {
+            self.total_desired -= messages.len();
+        }
+
+        self.last = Some(messages.last().unwrap().id);
+
+        Some(messages)
     }
 }

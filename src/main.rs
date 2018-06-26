@@ -4,6 +4,7 @@ extern crate termion;
 extern crate tui;
 extern crate discord;
 extern crate rpassword;
+extern crate itertools;
 
 use std::thread;
 use std::sync::{Arc, Mutex};
@@ -28,6 +29,9 @@ use tui::backend::RawBackend;
 use tui::widgets::{Widget, Block, Borders, Item, List, SelectableList, Paragraph};
 use tui::layout::{Group, Size, Rect, Direction};
 use tui::style::{Color, Modifier, Style};
+
+mod chatwidget;
+use chatwidget::ChatWidget;
 
 mod discord_provider;
 use discord_provider::{DiscordProvider, MsgToDiscord, MsgFromDiscord};
@@ -64,6 +68,7 @@ struct AppState {
     messages: Vec<MockMessage>,
     content: String,
     offset: usize,
+    scroll_pos: usize,
     servers: Vec<Server>,
     active_server: usize,
     mode: Mode,
@@ -108,6 +113,21 @@ impl AsRef<str> for Channel {
 }
 
 impl AppState {
+    fn new( to_provider: chan::Sender<MsgToDiscord>, from_provider: chan::Receiver<MsgFromDiscord>) -> Self {
+        AppState {
+            size: Rect::default(),
+            messages: vec![],
+            content: String::from(""),
+            offset: 0,
+            scroll_pos: 0,
+            active_server: 0,
+            servers: vec![],
+            mode: Mode::Normal,
+            mode_stack: vec![],
+            to_provider,
+            from_provider
+        }
+    }
     fn add_character(&mut self, chr: char) {
         let mut content_to_append = String::new();
         content_to_append.push(chr);
@@ -118,10 +138,7 @@ impl AppState {
     fn remove_character(&mut self) {
         let n = self.content.len();
 
-        let left_bound = match self.offset.checked_sub(1) {
-            Some(x) => x,
-            None => 0,
-        };
+        let left_bound = self.offset.checked_sub(1).unwrap_or(0);
 
         let right_bound = min(n, self.offset + 1);
 
@@ -156,10 +173,8 @@ impl AppState {
         self.to_provider.send(MsgToDiscord::GetServers);
     }
     fn quit(&mut self) {
-
         self.mode = Mode::Exiting;
         self.to_provider.send(MsgToDiscord::Logout);
-        
     }
     fn set_servers(&mut self, servers: Vec<discord::model::ServerInfo>) {
         self.servers.clear();
@@ -176,7 +191,7 @@ impl AppState {
         };
     }
     fn set_channels(&mut self, owner: discord::model::ServerId, channels: Vec<discord::model::PublicChannel>) {
-        let temp = self.servers.clone();     
+        let temp = self.servers.clone();
         let (i, owning_server) = temp.iter().enumerate().find(|&(i, server)| {
             server.server_info.id == owner
         }).unwrap();
@@ -204,6 +219,10 @@ impl AppState {
     }
     fn prev_mode(&mut self){
         self.mode = self.mode_stack.pop().unwrap_or(Mode::Normal);
+         match self.mode {
+            //Mode::Command => self.prev_mode(),
+            _ => ()
+        }
     }
     fn perform_command(&mut self, command: String){
         assert_eq!(self.mode, Mode::Command);
@@ -233,10 +252,12 @@ impl AppState {
                     Key::Char(':') => self.switch_mode(Mode::Command),
                     Key::Char('s') => self.switch_mode(Mode::ServerSelect),
                     Key::Char('c') => self.switch_mode(Mode::ChannelSelect),
-                    Key::Ctrl('k') => self.switch_mode(Mode::Fzf),
-                    Key::Char('/') => self.switch_mode(Mode::Fzf),
+                    //Key::Ctrl('k') => self.switch_mode(Mode::Fzf),
+                    //Key::Char('/') => self.switch_mode(Mode::Fzf),
                     //Key::Char('k') => self.mode = Mode::Command,
                     //Key::Char('j') => self.mode = Mode::Command,
+                    Key::Ctrl('u') => self.scroll_pos += 5,
+                    Key::Ctrl('d') => self.scroll_pos = self.scroll_pos.checked_sub(5).unwrap_or(0),
                     _ => ()
                 }
             },
@@ -252,7 +273,10 @@ impl AppState {
                     Key::Backspace => {
                         self.remove_character();
                     }
-                    Key::Esc => self.prev_mode(),
+                    Key::Esc => {
+                        self.prev_mode();
+                        if let Mode::Command = self.mode { self.prev_mode(); }
+                    },
                     _ => ()
                 }
             },
@@ -304,7 +328,7 @@ impl Server {
             self.active_channel = 0;
         } else {
            let new_index = (self.active_channel + 1) % self.channels.len();
-            self.active_channel = new_index; 
+            self.active_channel = new_index;
         }
     }
     fn prev_channel(&mut self) {
@@ -372,19 +396,8 @@ fn main() {
  
     let mut terminal = Terminal::new(backend).unwrap();
  
-    let mut app_state = AppState {
-        size: Rect::default(),
-        messages: vec![],
-        content: String::from(""),
-        offset: 0,
-        active_server: 0,
-        servers: vec![],
-        mode: Mode::Normal,
-        mode_stack: vec![],
-        to_provider: channel_to_discord.0.clone(),
-        from_provider: channel_from_discord.1.clone(),
-    };
-    app_state.get_servers();
+    let mut app_state = AppState::new(channel_to_discord.0.clone(),channel_from_discord.1.clone());
+    app_state.get_servers();          
     let dummy_channel = Channel {
         name: String::from("Loading..."),
         id: discord::model::ChannelId {
@@ -548,7 +561,7 @@ fn draw(t: &mut Terminal<RawBackend>, state: &AppState) {
                     draw_left(t, state, &chunks[0]);
                     draw_messagePane(t, state, &chunks[1]);
                 });
-            Paragraph::default().text(&format!("Mode: {:?}", state.mode)).render(t, &chunks[1]);
+            Paragraph::default().text(&format!("Mode: {:?}, Scroll:{}", state.mode, state.scroll_pos)).render(t, &chunks[1]);
         });
 
     t.draw();
@@ -572,13 +585,15 @@ fn draw_messagePane(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect)
             }
 
             let n = msgs.len();
-            let nm = chunks[1].height as usize;
-            let left_bound: usize = match n.checked_sub(nm) {
-                Some(x) => x,
-                None => 0,
-            };
-
-            let msgs = msgs[0..n].iter().map( |msg| {
+            let nm = (chunks[0].height as usize).checked_sub(2).unwrap_or(0);
+            let left_bound = n.checked_sub(nm+state.scroll_pos).unwrap_or(0);
+            
+            ChatWidget::new(&msgs.to_vec())
+				.scroll(state.scroll_pos)
+                .block(Block::default().borders(Borders::ALL).title(&format!("#{}", channel_name)[..]))
+                .render(t, &chunks[0]);
+/*
+            let msgs = msgs[left_bound..n].iter().map( |msg| {
                 Item::StyledData(
                     format!("{}: {}", &msg.author.name[..], &msg.content[..]),
                     &style,
@@ -589,11 +604,17 @@ fn draw_messagePane(t: &mut Terminal<RawBackend>, state: &AppState, area: &Rect)
             List::new(msgs)
                 .block(Block::default().borders(Borders::ALL).title(&format!("#{}", channel_name)[..]))
                 .render(t, &chunks[0]);
+*/
             match state.mode {
+              
                 Mode::TextInput => {
+              let help = match state.mode_stack.last().unwrap() {
+               &Mode::Command => String::from("Command"),
+               &Mode::Normal => format!("Message #{}", channel_name),
+               x => format!("Input for {:?}", x)};
                      Paragraph::default()
                         .text(&state.content[..])
-                        .block(Block::default().borders(Borders::ALL).title(&format!("Message #{}", channel_name)))
+                        .block(Block::default().borders(Borders::ALL).title(help.as_ref()))
                         .render(t, &chunks[1]);
                 }
                 _ => {
